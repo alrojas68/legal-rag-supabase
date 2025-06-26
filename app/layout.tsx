@@ -9,8 +9,26 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+  title: "Legal RAG AI - Asistente Legal Inteligente",
+  description: "Tu asistente legal inteligente que te ayuda con consultas sobre leyes, regulaciones y documentos legales usando IA avanzada.",
+  keywords: ["legal", "IA", "asistente", "leyes", "regulaciones", "consultoría legal"],
+  authors: [{ name: "Legal RAG AI Team" }],
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
+  openGraph: {
+    title: "Legal RAG AI - Asistente Legal Inteligente",
+    description: "Tu asistente legal inteligente que te ayuda con consultas sobre leyes, regulaciones y documentos legales.",
+    type: "website",
+    url: defaultUrl,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Legal RAG AI - Asistente Legal Inteligente",
+    description: "Tu asistente legal inteligente que te ayuda con consultas sobre leyes, regulaciones y documentos legales.",
+  },
 };
 
 const geistSans = Geist({
@@ -25,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
         <ThemeProvider
           attribute="class"

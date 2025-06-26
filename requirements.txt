@@ -1,0 +1,5 @@
+# Dependencias para procesamiento de archivos y embeddings en Node.js
+formidable
+pdf-parse
+uuid
+chonkie 

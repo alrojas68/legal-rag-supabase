@@ -1,0 +1,556 @@
+{
+  "id": "ddd2401f-aa6f-4be1-8f70-cebfaa85fe2c",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_settings": {
+      "name": "app_settings",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chat_history": {
+      "name": "chat_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "query": {
+          "name": "query",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "response": {
+          "name": "response",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "documents_used": {
+          "name": "documents_used",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'default-session'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chunks": {
+      "name": "chunks",
+      "schema": "",
+      "columns": {
+        "chunk_id": {
+          "name": "chunk_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "section_id": {
+          "name": "section_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chunk_text": {
+          "name": "chunk_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "char_count": {
+          "name": "char_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_page": {
+          "name": "start_page",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_page": {
+          "name": "end_page",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chunk_order": {
+          "name": "chunk_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vector_id": {
+          "name": "vector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hierarchy_id": {
+          "name": "hierarchy_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legal_document_name": {
+          "name": "legal_document_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legal_document_code": {
+          "name": "legal_document_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "article_number": {
+          "name": "article_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "section_number": {
+          "name": "section_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paragraph_number": {
+          "name": "paragraph_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "chunks_section_id_sections_section_id_fk": {
+          "name": "chunks_section_id_sections_section_id_fk",
+          "tableFrom": "chunks",
+          "tableTo": "sections",
+          "columnsFrom": [
+            "section_id"
+          ],
+          "columnsTo": [
+            "section_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "chunks_document_id_documents_document_id_fk": {
+          "name": "chunks_document_id_documents_document_id_fk",
+          "tableFrom": "chunks",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "columnsTo": [
+            "document_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.documents": {
+      "name": "documents",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "publication_date": {
+          "name": "publication_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_reform_date": {
+          "name": "last_reform_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jurisdiction": {
+          "name": "jurisdiction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "doc_type": {
+          "name": "doc_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.embeddings": {
+      "name": "embeddings",
+      "schema": "",
+      "columns": {
+        "vector_id": {
+          "name": "vector_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "chunk_id": {
+          "name": "chunk_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embeddings_order": {
+          "name": "embeddings_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "embeddings_chunk_id_chunks_chunk_id_fk": {
+          "name": "embeddings_chunk_id_chunks_chunk_id_fk",
+          "tableFrom": "embeddings",
+          "tableTo": "chunks",
+          "columnsFrom": [
+            "chunk_id"
+          ],
+          "columnsTo": [
+            "chunk_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.legal_hierarchy": {
+      "name": "legal_hierarchy",
+      "schema": "",
+      "columns": {
+        "hierarchy_id": {
+          "name": "hierarchy_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hierarchy_level": {
+          "name": "hierarchy_level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hierarchy_name": {
+          "name": "hierarchy_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "legal_document_name": {
+          "name": "legal_document_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "legal_document_short_name": {
+          "name": "legal_document_short_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legal_document_code": {
+          "name": "legal_document_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_hierarchy_id": {
+          "name": "parent_hierarchy_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jurisdiction": {
+          "name": "jurisdiction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "user_selected_type": {
+          "name": "user_selected_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ia_suggested_type": {
+          "name": "ia_suggested_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "legal_hierarchy_document_id_documents_document_id_fk": {
+          "name": "legal_hierarchy_document_id_documents_document_id_fk",
+          "tableFrom": "legal_hierarchy",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "columnsTo": [
+            "document_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sections": {
+      "name": "sections",
+      "schema": "",
+      "columns": {
+        "section_id": {
+          "name": "section_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_section_id": {
+          "name": "parent_section_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "section_type": {
+          "name": "section_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "section_number": {
+          "name": "section_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sections_document_id_documents_document_id_fk": {
+          "name": "sections_document_id_documents_document_id_fk",
+          "tableFrom": "sections",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "columnsTo": [
+            "document_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

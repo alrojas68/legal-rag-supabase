@@ -1,7 +1,12 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Rutas públicas que no requieren autenticación
+  const publicPaths = ['/', '/api/upload', '/upload'];
+  if (publicPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+    return NextResponse.next();
+  }
   return await updateSession(request);
 }
 

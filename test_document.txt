@@ -1,0 +1,9 @@
+Este es un documento PDF de prueba para verificar la funcionalidad de carga de PDFs en la plataforma legal RAG.
+
+Contiene información de prueba sobre leyes y regulaciones:
+
+Artículo 1. Este es un artículo de prueba que simula contenido legal.
+Artículo 2. Otro artículo con información legal de ejemplo.
+Artículo 3. Un tercer artículo para completar la prueba.
+
+Este documento será procesado por el sistema de chunking y embeddings para poder hacer consultas sobre su contenido.
