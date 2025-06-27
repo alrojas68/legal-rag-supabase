@@ -12,13 +12,35 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Lista de palabras vacías/preposiciones comunes en español
+    const stopwords = [
+      'de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'sí', 'porque', 'esta', 'entre', 'cuando', 'muy', 'sin', 'sobre', 'también', 'me', 'hasta', 'hay', 'donde', 'quien', 'desde', 'todo', 'nos', 'durante', 'todos', 'uno', 'les', 'ni', 'contra', 'otros', 'ese', 'eso', 'ante', 'ellos', 'e', 'esto', 'mí', 'antes', 'algunos', 'qué', 'unos', 'yo', 'otro', 'otras', 'otra', 'él', 'tanto', 'esa', 'estos', 'mucho', 'quienes', 'nada', 'muchos', 'cual', 'poco', 'ella', 'estar', 'estas', 'algunas', 'algo', 'nosotros', 'mi', 'mis', 'tú', 'te', 'ti', 'tu', 'tus', 'ellas', 'nosotras', 'vosotros', 'vosotras', 'os', 'mío', 'mía', 'míos', 'mías', 'tuyo', 'tuya', 'tuyos', 'tuyas', 'suyo', 'suya', 'suyos', 'suyas', 'nuestro', 'nuestra', 'nuestros', 'nuestras', 'vuestro', 'vuestra', 'vuestros', 'vuestras', 'esos', 'esas', 'estoy', 'estás', 'está', 'estamos', 'estáis', 'están', 'esté', 'estés', 'estemos', 'estéis', 'estén', 'estaré', 'estarás', 'estará', 'estaremos', 'estaréis', 'estarán', 'estaría', 'estarías', 'estaríamos', 'estaríais', 'estarían', 'estaba', 'estabas', 'estábamos', 'estabais', 'estaban', 'estuve', 'estuviste', 'estuvo', 'estuvimos', 'estuvisteis', 'estuvieron', 'estuviera', 'estuvieras', 'estuviéramos', 'estuvierais', 'estuvieran', 'estuviese', 'estuvieses', 'estuviésemos', 'estuvieseis', 'estuviesen', 'estando', 'estado', 'estada', 'estados', 'estadas', 'estad'];
+
+    // Preprocesar la query para to_tsquery
+    let processedQuery = query
+      .toLowerCase()
+      .replace(/[¿?¡!.,;:()\[\]{}\-_=+<>"'`~@#$%^&*/\\]/g, ' ') // Elimina signos de puntuación
+      .split(/\s+/)
+      .filter((word: string) => word.length > 2 && !stopwords.includes(word)) // Elimina palabras cortas y stopwords
+      .join(' & ');
+
+    if (!processedQuery) {
+      return NextResponse.json({
+        error: 'La consulta no contiene términos relevantes para la búsqueda BM25',
+        success: false
+      }, { status: 400 });
+    }
+
+    console.log('🔍 BM25: Query original:', query);
+    console.log('🔍 BM25: Query procesada para to_tsquery:', processedQuery);
+
     const supabase = await createClient();
     
-    console.log('🔍 BM25: Buscando documentos para:', query);
+    console.log('🔍 BM25: Buscando documentos para:', processedQuery);
     
     // Usar la función RPC para búsqueda BM25
     const { data: results, error } = await supabase.rpc('search_chunks_bm25', {
-      search_query: query,
+      search_query: processedQuery,
       result_limit: limit
     });
 
@@ -27,7 +49,8 @@ export async function POST(req: NextRequest) {
       
       // Fallback: búsqueda simple con ILIKE
       console.log('🔄 Intentando búsqueda fallback con ILIKE...');
-      const { data: fallbackResults, error: fallbackError } = await supabase
+      // Obtener chunks y luego hacer join manual a documentos
+      const { data: fallbackChunks, error: fallbackError } = await supabase
         .from('chunks')
         .select(`
           chunk_id,
@@ -35,21 +58,9 @@ export async function POST(req: NextRequest) {
           start_page,
           end_page,
           char_count,
-          sections!inner(
-            section_id,
-            section_type,
-            section_number,
-            documents!inner(
-              document_id,
-              source,
-              publication_date,
-              last_reform_date,
-              jurisdiction,
-              doc_type
-            )
-          )
+          document_id
         `)
-        .ilike('chunk_text', `%${query}%`)
+        .ilike('chunk_text', `%${processedQuery}%`)
         .limit(limit);
 
       if (fallbackError) {
@@ -60,22 +71,38 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const processedResults = fallbackResults?.map((chunk: any) => ({
-        chunk_id: chunk.chunk_id,
-        content: chunk.chunk_text,
-        start_page: chunk.start_page,
-        end_page: chunk.end_page,
-        char_count: chunk.char_count,
-        document_id: chunk.sections.documents.document_id,
-        source: chunk.sections.documents.source,
-        publication_date: chunk.sections.documents.publication_date,
-        last_reform_date: chunk.sections.documents.last_reform_date,
-        jurisdiction: chunk.sections.documents.jurisdiction,
-        doc_type: chunk.sections.documents.doc_type,
-        section_type: chunk.sections.section_type,
-        section_number: chunk.sections.section_number,
-        rank_score: 1.0 // Score fijo para fallback
-      })) || [];
+      // Obtener los document_id únicos
+      const docIds = (fallbackChunks || []).map((chunk: any) => chunk.document_id).filter(Boolean);
+      let documentsMap: Record<string, any> = {};
+      if (docIds.length > 0) {
+        const { data: docsData } = await supabase
+          .from('documents')
+          .select('*')
+          .in('document_id', docIds);
+        if (docsData) {
+          for (const doc of docsData) {
+            documentsMap[doc.document_id] = doc;
+          }
+        }
+      }
+
+      const processedResults = (fallbackChunks || []).map((chunk: any) => {
+        const doc = documentsMap[chunk.document_id] || {};
+        return {
+          chunk_id: chunk.chunk_id,
+          content: chunk.chunk_text,
+          start_page: chunk.start_page,
+          end_page: chunk.end_page,
+          char_count: chunk.char_count,
+          document_id: chunk.document_id,
+          source: doc.source,
+          publication_date: doc.publication_date,
+          last_reform_date: doc.last_reform_date,
+          jurisdiction: doc.jurisdiction,
+          doc_type: doc.doc_type,
+          rank_score: 1.0 // Score fijo para fallback
+        };
+      });
 
       console.log(`✅ BM25 Fallback: Encontrados ${processedResults.length} resultados`);
 
