@@ -6,6 +6,9 @@ export default {
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    ssl: {
+      rejectUnauthorized: false
+    }
   },
   verbose: true,
   strict: true,
