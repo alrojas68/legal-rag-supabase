@@ -36,7 +36,6 @@ CREATE TABLE "chunks" (
 CREATE TABLE "documents" (
 	"document_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"source" text NOT NULL,
-	"publication_date" date,
 	"last_reform_date" date,
 	"jurisdiction" text,
 	"doc_type" text,

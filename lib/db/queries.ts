@@ -141,7 +141,6 @@ export async function getDocumentsWithChunks(): Promise<Document[]> {
       .select({
         documentId: documents.documentId,
         source: documents.source,
-        publicationDate: documents.publicationDate,
         lastReformDate: documents.lastReformDate,
         jurisdiction: documents.jurisdiction,
         docType: documents.docType,

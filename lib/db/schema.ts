@@ -5,7 +5,6 @@ import { relations } from 'drizzle-orm';
 export const documents = pgTable('documents', {
   documentId: uuid('document_id').primaryKey().defaultRandom(),
   source: text('source').notNull(),
-  publicationDate: date('publication_date'),
   lastReformDate: date('last_reform_date'),
   jurisdiction: text('jurisdiction'),
   docType: text('doc_type'),

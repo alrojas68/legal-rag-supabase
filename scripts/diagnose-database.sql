@@ -25,7 +25,6 @@ SELECT 'embeddings' as tabla, COUNT(*) as total FROM embeddings;
 SELECT 
     d.document_id,
     d.source,
-    d.publication_date,
     d.last_reform_date,
     d.jurisdiction,
     d.doc_type,
@@ -36,17 +35,10 @@ FROM documents d
 LEFT JOIN sections s ON d.document_id = s.document_id
 LEFT JOIN chunks c ON s.section_id = c.section_id
 LEFT JOIN embeddings e ON c.vector_id = e.vector_id
-GROUP BY d.document_id, d.source, d.publication_date, d.last_reform_date, d.jurisdiction, d.doc_type
+GROUP BY d.document_id, d.source, d.last_reform_date, d.jurisdiction, d.doc_type
 ORDER BY d.source;
 
 -- 4. Verificar campos NULL en documentos
-SELECT 
-    'publication_date' as campo,
-    COUNT(*) as total_null,
-    COUNT(*) * 100.0 / (SELECT COUNT(*) FROM documents) as porcentaje_null
-FROM documents 
-WHERE publication_date IS NULL
-UNION ALL
 SELECT 
     'last_reform_date' as campo,
     COUNT(*) as total_null,

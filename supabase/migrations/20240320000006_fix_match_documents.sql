@@ -1,4 +1,8 @@
 -- Fix the function name in match_documents
+
+-- Elimina la función anterior si existe
+DROP FUNCTION IF EXISTS match_documents(text, integer);
+
 CREATE OR REPLACE FUNCTION match_documents(
     query_text TEXT,
     match_count INT DEFAULT 10
@@ -6,10 +10,9 @@ CREATE OR REPLACE FUNCTION match_documents(
 RETURNS TABLE (
     document_id UUID,
     source VARCHAR,
-    publication_date DATE,
-    last_reform_date DATE,
-    jurisdiction VARCHAR,
-    doc_type VARCHAR,
+    chunk_id UUID,
+    chunk_text TEXT,
+    article_number TEXT,
     similarity_score FLOAT
 )
 LANGUAGE plpgsql
@@ -23,15 +26,13 @@ BEGIN
     SELECT 
         d.document_id,
         d.source,
-        d.publication_date,
-        d.last_reform_date,
-        d.jurisdiction,
-        d.doc_type,
+        c.chunk_id,
+        c.chunk_text,
+        c.article_number,
         1 - (e.embedding <=> (SELECT embedding FROM query_embedding)) as similarity_score
     FROM documents d
-    JOIN sections s ON d.document_id = s.document_id
-    JOIN chunks c ON s.section_id = c.section_id
-    JOIN embeddings e ON c.vector_id = e.vector_id
+    JOIN chunks c ON d.document_id = c.document_id
+    JOIN embeddings e ON c.chunk_id = e.chunk_id
     ORDER BY similarity_score DESC
     LIMIT match_count;
 END;

@@ -617,25 +617,18 @@ export async function POST(req: NextRequest) {
     const embeddings = await getEmbeddingsBatch(chunks);
     console.log(`✅ ${embeddings.length} embeddings generados`);
 
-    // 7. Preparar datos para inserción en lotes con metadatos legales
+    // 7. Preparar datos para inserción en lotes
     const chunksData = chunks.map((chunkText, index) => {
       // Extraer referencias de artículos del chunk específico
       const chunkReferences = extractArticleReferences(chunkText);
       const primaryReference = chunkReferences.length > 0 ? chunkReferences[0] : null;
-      
       return {
         chunk_id: uuidv4(),
-        section_id,
+        document_id,
         chunk_text: chunkText,
-        char_count: chunkText.length,
         chunk_order: index,
-        // Nuevos campos de jerarquía legal
-        hierarchy_id,
-        legal_document_name: legalClassification.legal_document_name,
-        legal_document_code: legalClassification.legal_document_code,
         article_number: primaryReference?.article_number || null,
-        section_number: primaryReference?.section_number || null,
-        paragraph_number: primaryReference?.paragraph_number || null,
+        char_count: chunkText.length,
         created_at: new Date().toISOString(),
         embedding: embeddings[index]
       };

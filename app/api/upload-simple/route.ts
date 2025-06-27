@@ -337,13 +337,11 @@ export async function POST(req: NextRequest) {
     // Preparar datos para inserción
     const chunksData = chunks.map((chunkText, index) => ({
       chunk_id: uuidv4(),
-      section_id,
+      document_id,
       chunk_text: chunkText,
-      char_count: chunkText.length,
       chunk_order: index,
-      hierarchy_id,
-      legal_document_name: source || file.name,
-      legal_document_code: file.name.split('.')[0].toUpperCase(),
+      article_number: null, // Si tienes lógica para extraer el artículo, ponla aquí
+      char_count: chunkText.length,
       created_at: new Date().toISOString(),
       embedding: embeddings[index]
     }));

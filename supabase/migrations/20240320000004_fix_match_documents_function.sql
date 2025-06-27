@@ -6,7 +6,6 @@ CREATE OR REPLACE FUNCTION match_documents(
 RETURNS TABLE (
     document_id UUID,
     source VARCHAR,
-    publication_date DATE,
     last_reform_date DATE,
     jurisdiction VARCHAR,
     doc_type VARCHAR,
@@ -24,7 +23,6 @@ BEGIN
     SELECT 
         d.document_id,
         d.source,
-        d.publication_date,
         d.last_reform_date,
         d.jurisdiction,
         d.doc_type,

@@ -1,42 +1,41 @@
--- Crear tabla de documentos
-create table if not exists documents (
-  document_id uuid primary key,
-  source text not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- Crear tabla documents
+CREATE TABLE IF NOT EXISTS documents (
+  document_id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  source TEXT NOT NULL,
+  doc_type TEXT,
+  created_at TIMESTAMP DEFAULT now() NOT NULL
 );
 
--- Crear tabla de secciones
-create table if not exists sections (
-  section_id uuid primary key,
-  document_id uuid references documents(document_id) on delete cascade,
-  parent_section_id uuid references sections(section_id) on delete set null,
-  section_type text not null,
-  section_number text not null,
-  content_hash text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- Crear tabla chunks
+CREATE TABLE IF NOT EXISTS chunks (
+  chunk_id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  document_id UUID REFERENCES documents(document_id) ON DELETE CASCADE,
+  chunk_text TEXT NOT NULL,
+  chunk_order INTEGER,
+  article_number TEXT,
+  char_count INTEGER,
+  created_at TIMESTAMP DEFAULT now() NOT NULL
 );
 
--- Crear tabla de chunks
-create table if not exists chunks (
-  chunk_id uuid primary key,
-  section_id uuid references sections(section_id) on delete cascade,
-  chunk_text text not null,
-  char_count integer not null,
-  start_page integer,
-  end_page integer,
-  vector_id uuid,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- Crear tabla embeddings
+CREATE TABLE IF NOT EXISTS embeddings (
+  vector_id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  chunk_id UUID REFERENCES chunks(chunk_id) ON DELETE CASCADE,
+  embedding TEXT NOT NULL,
+  embeddings_order INTEGER,
+  created_at TIMESTAMP DEFAULT now() NOT NULL
 );
 
--- Crear tabla de embeddings
-create table if not exists embeddings (
-  vector_id uuid primary key,
-  chunk_id uuid references chunks(chunk_id) on delete cascade,
-  embedding vector(1536), -- Dimensión para text-embedding-ada-002
-  embeddings_order integer not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- Crear tabla chat_history
+CREATE TABLE IF NOT EXISTS chat_history (
+  chat_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  query TEXT NOT NULL,
+  response TEXT NOT NULL,
+  documents_used UUID[],
+  session_id TEXT DEFAULT 'default-session',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Crear índices para búsqueda vectorial
-create index if not exists embeddings_vector_idx on embeddings using ivfflat (embedding vector_cosine_ops)
-with (lists = 100); 
+-- Índices para chat_history
+CREATE INDEX IF NOT EXISTS chat_history_session_id_idx ON chat_history(session_id);
+CREATE INDEX IF NOT EXISTS chat_history_created_at_idx ON chat_history(created_at); 
