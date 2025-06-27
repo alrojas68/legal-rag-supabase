@@ -27,136 +27,101 @@ async function getEmbeddings(text: string): Promise<number[]> {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
     
-    console.log('🔍 DIAGNÓSTICO COMPLETO DE CONDOMINIO');
+    console.log('🔍 DIAGNÓSTICO: Verificando estructura de tablas...');
     
-    // 1. Verificar documentos disponibles
-    console.log('📚 1. Verificando documentos...');
+    // Verificar estructura de la tabla chunks
+    const { data: chunksStructure, error: chunksError } = await supabase
+      .from('chunks')
+      .select('*')
+      .limit(1);
+    
+    if (chunksError) {
+      console.error('❌ Error al verificar chunks:', chunksError);
+    } else {
+      console.log('✅ Estructura de chunks:', Object.keys(chunksStructure?.[0] || {}));
+    }
+    
+    // Verificar estructura de embeddings
+    const { data: embeddingsStructure, error: embeddingsError } = await supabase
+      .from('embeddings')
+      .select('*')
+      .limit(1);
+    
+    if (embeddingsError) {
+      console.error('❌ Error al verificar embeddings:', embeddingsError);
+    } else {
+      console.log('✅ Estructura de embeddings:', Object.keys(embeddingsStructure?.[0] || {}));
+    }
+    
+    // Verificar documentos disponibles
     const { data: documents, error: docsError } = await supabase
       .from('documents')
-      .select('document_id, source')
-      .limit(50);
+      .select('*');
     
     if (docsError) {
-      console.error('❌ Error al obtener documentos:', docsError);
+      console.error('❌ Error al verificar documentos:', docsError);
     } else {
-      console.log(`✅ Documentos encontrados: ${documents?.length || 0}`);
-      console.log('📄 Fuentes disponibles:', documents?.map((d: any) => d.source) || []);
+      console.log('📚 Documentos disponibles:', documents?.map(d => d.source));
     }
     
-    // 2. Buscar específicamente por "condominio"
-    console.log('🔍 2. Buscando chunks con "condominio"...');
-    const { data: condominioChunks, error: condError } = await supabase
+    // Verificar chunks con embeddings
+    const { data: chunksWithEmbeddings, error: chunksEmbedError } = await supabase
       .from('chunks')
-      .select('chunk_id, chunk_text, documents!inner(source)')
-      .ilike('chunk_text', '%condominio%')
-      .limit(10);
-    
-    if (condError) {
-      console.error('❌ Error al buscar condominio:', condError);
-    } else {
-      console.log(`✅ Chunks con "condominio": ${condominioChunks?.length || 0}`);
-      if (condominioChunks && condominioChunks.length > 0) {
-        console.log('📄 Ejemplos:');
-        condominioChunks.forEach((chunk: any, idx: number) => {
-          console.log(`  ${idx + 1}. ${chunk.documents.source}`);
-          console.log(`     Texto: ${chunk.chunk_text.substring(0, 300)}...`);
-          console.log('     ---');
-        });
-      }
-    }
-    
-    // 3. Buscar por "régimen" (término relacionado)
-    console.log('🔍 3. Buscando chunks con "régimen"...');
-    const { data: regimenChunks, error: regimenError } = await supabase
-      .from('chunks')
-      .select('chunk_id, chunk_text, documents!inner(source)')
-      .ilike('chunk_text', '%régimen%')
+      .select(`
+        chunk_id,
+        chunk_text,
+        vector_id,
+        embeddings!inner(vector_id)
+      `)
       .limit(5);
     
-    if (regimenError) {
-      console.error('❌ Error al buscar régimen:', regimenError);
+    if (chunksEmbedError) {
+      console.error('❌ Error al verificar chunks con embeddings:', chunksEmbedError);
     } else {
-      console.log(`✅ Chunks con "régimen": ${regimenChunks?.length || 0}`);
+      console.log('📊 Chunks con embeddings:', chunksWithEmbeddings?.length || 0);
     }
     
-    // 4. Verificar embeddings
-    console.log('🔍 4. Verificando embeddings...');
-    const { data: embeddings, error: embError } = await supabase
-      .from('embeddings')
-      .select('vector_id, chunk_id', { count: 'exact' });
+    // Probar búsqueda BM25 simple
+    const { data: bm25Test, error: bm25Error } = await supabase
+      .from('chunks')
+      .select('chunk_text')
+      .textSearch('chunk_text', 'derechos', {
+        type: 'plain',
+        config: 'spanish'
+      })
+      .limit(5);
     
-    if (embError) {
-      console.error('❌ Error al contar embeddings:', embError);
+    if (bm25Error) {
+      console.error('❌ Error en búsqueda BM25:', bm25Error);
     } else {
-      console.log(`✅ Total de embeddings: ${embeddings?.length || 0}`);
-    }
-    
-    // 5. Probar búsqueda vectorial
-    console.log('🔍 5. Probando búsqueda vectorial...');
-    const query = "cuales son los requisitos para un condominio?";
-    const queryEmbedding = await getEmbeddings(query);
-    console.log('✅ Embedding generado, longitud:', queryEmbedding.length);
-    
-    const { data: vectorResults, error: vectorError } = await supabase.rpc('match_documents', {
-      query_embedding: queryEmbedding,
-      match_count: 10
-    });
-    
-    if (vectorError) {
-      console.error('❌ Error en búsqueda vectorial:', vectorError);
-    } else {
-      console.log(`✅ Resultados vectoriales: ${vectorResults?.length || 0}`);
-      if (vectorResults && vectorResults.length > 0) {
-        console.log('📄 Top 3 resultados:');
-        vectorResults.slice(0, 3).forEach((doc: any, idx: number) => {
-          console.log(`  ${idx + 1}. ${doc.source} (score: ${doc.similarity_score?.toFixed(4)})`);
-          if (doc.content) {
-            console.log(`     Contenido: ${doc.content.substring(0, 200)}...`);
-          }
-        });
-      }
-    }
-    
-    // 6. Verificar estructura de la función RPC
-    console.log('🔍 6. Verificando función RPC...');
-    const { data: rpcInfo, error: rpcError } = await supabase
-      .rpc('match_documents', {
-        query_embedding: queryEmbedding,
-        match_count: 1
-      });
-    
-    if (rpcError) {
-      console.error('❌ Error en RPC:', rpcError);
-    } else {
-      console.log('✅ RPC funciona, estructura del resultado:', Object.keys(rpcInfo?.[0] || {}));
+      console.log('✅ Búsqueda BM25 exitosa:', bm25Test?.length || 0, 'resultados');
     }
     
     return NextResponse.json({
       success: true,
-      diagnosis: {
-        totalDocuments: documents?.length || 0,
-        documents: documents?.map((d: any) => d.source) || [],
-        condominioChunks: condominioChunks?.length || 0,
-        regimenChunks: regimenChunks?.length || 0,
-        totalEmbeddings: embeddings?.length || 0,
-        vectorResults: vectorResults?.length || 0,
-        topVectorResults: vectorResults?.slice(0, 3).map((doc: any) => ({
-          source: doc.source,
-          score: doc.similarity_score,
-          content: doc.content?.substring(0, 200)
-        })) || []
+      chunks_structure: chunksStructure?.[0] ? Object.keys(chunksStructure[0]) : null,
+      embeddings_structure: embeddingsStructure?.[0] ? Object.keys(embeddingsStructure[0]) : null,
+      documents_count: documents?.length || 0,
+      chunks_with_embeddings: chunksWithEmbeddings?.length || 0,
+      bm25_test_success: !bm25Error,
+      errors: {
+        chunks: chunksError?.message,
+        embeddings: embeddingsError?.message,
+        documents: docsError?.message,
+        chunks_embeddings: chunksEmbedError?.message,
+        bm25: bm25Error?.message
       }
     });
     
   } catch (error) {
     console.error('Error en diagnóstico:', error);
     return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido'
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido'
     }, { status: 500 });
   }
 } 

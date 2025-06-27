@@ -3,7 +3,7 @@ DROP FUNCTION IF EXISTS match_documents(text, integer);
 DROP FUNCTION IF EXISTS match_documents(VECTOR(768), integer);
 DROP FUNCTION IF EXISTS match_documents(VECTOR(1536), integer);
 
--- Crear función corregida que use solo las columnas existentes
+-- Crear función corregida que use la relación correcta entre chunks y embeddings
 CREATE OR REPLACE FUNCTION match_documents(
     query_embedding VECTOR(768),
     match_count INT DEFAULT 10
@@ -30,7 +30,7 @@ BEGIN
     FROM documents d
     JOIN sections s ON d.document_id = s.document_id
     JOIN chunks c ON s.section_id = c.section_id
-    JOIN embeddings e ON c.vector_id = e.vector_id
+    JOIN embeddings e ON c.chunk_id = e.chunk_id  -- Corregido: usar chunk_id en lugar de vector_id
     WHERE e.embedding IS NOT NULL
     ORDER BY e.embedding <=> query_embedding
     LIMIT match_count;

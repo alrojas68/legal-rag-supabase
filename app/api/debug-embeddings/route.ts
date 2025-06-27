@@ -23,137 +23,91 @@ async function getEmbeddings(text: string): Promise<number[]> {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
     
-    // 1. Verificar embeddings en la base de datos
-    console.log('🔍 Verificando embeddings en la base de datos...');
-    const { data: embeddings, error: embError } = await supabase
-      .from('embeddings')
-      .select('*')
-      .limit(5);
-
-    if (embError) {
-      console.error('Error al obtener embeddings:', embError);
-      return NextResponse.json({
-        success: false,
-        error: 'Error al obtener embeddings de la base de datos'
-      });
-    }
-
-    // 2. Verificar chunks
-    console.log('📄 Verificando chunks...');
-    const { data: chunks, error: chunksError } = await supabase
-      .from('chunks')
-      .select('*')
-      .limit(5);
-
-    if (chunksError) {
-      console.error('Error al obtener chunks:', chunksError);
-    }
-
-    // 3. Generar un embedding de prueba
-    console.log('🧠 Generando embedding de prueba...');
-    const testText = "artículo 19 constitución";
-    const testEmbedding = await getEmbeddings(testText);
+    console.log('🔍 DIAGNÓSTICO: Verificando embeddings...');
     
-    // 4. Verificar formato de embeddings en la base
-    let embeddingAnalysis = {
-      totalEmbeddings: 0,
-      validEmbeddings: 0,
-      invalidEmbeddings: 0,
-      sampleEmbedding: null,
-      embeddingLength: 0
-    };
-
-    if (embeddings && embeddings.length > 0) {
-      embeddingAnalysis.totalEmbeddings = embeddings.length;
-      const sampleEmbedding = embeddings[0];
-      
-      if (sampleEmbedding.embedding) {
-        // Verificar si es un array o string
-        if (Array.isArray(sampleEmbedding.embedding)) {
-          embeddingAnalysis.embeddingLength = sampleEmbedding.embedding.length;
-          embeddingAnalysis.validEmbeddings = embeddings.filter(e => Array.isArray(e.embedding) && e.embedding.length === 768).length;
-          embeddingAnalysis.invalidEmbeddings = embeddings.length - embeddingAnalysis.validEmbeddings;
-          embeddingAnalysis.sampleEmbedding = sampleEmbedding.embedding.slice(0, 5); // Primeros 5 valores
-        } else if (typeof sampleEmbedding.embedding === 'string') {
-          try {
-            const parsed = JSON.parse(sampleEmbedding.embedding);
-            embeddingAnalysis.embeddingLength = parsed.length;
-            embeddingAnalysis.validEmbeddings = embeddings.filter(e => {
-              try {
-                const parsed = JSON.parse(e.embedding);
-                return Array.isArray(parsed) && parsed.length === 768;
-              } catch {
-                return false;
-              }
-            }).length;
-            embeddingAnalysis.invalidEmbeddings = embeddings.length - embeddingAnalysis.validEmbeddings;
-            embeddingAnalysis.sampleEmbedding = parsed.slice(0, 5);
-          } catch (parseError) {
-            embeddingAnalysis.invalidEmbeddings = embeddings.length;
-          }
-        }
-      }
+    // Contar embeddings totales
+    const { count: embeddingsCount, error: countError } = await supabase
+      .from('embeddings')
+      .select('*', { count: 'exact', head: true });
+    
+    if (countError) {
+      console.error('❌ Error al contar embeddings:', countError);
+    } else {
+      console.log('📊 Total de embeddings:', embeddingsCount);
     }
-
-    // 5. Probar similitud con embeddings de la base
-    let similarityTest = {
-      testQuery: testText,
-      testEmbeddingLength: testEmbedding.length,
-      similarities: [] as Array<{
-        embeddingId: string;
-        similarity: number;
-        format: string;
-      }>
-    };
-
-    if (embeddings && embeddings.length > 0) {
-      for (let i = 0; i < Math.min(3, embeddings.length); i++) {
-        const dbEmbedding = embeddings[i].embedding;
-        let similarity = 0;
-        
-        if (Array.isArray(dbEmbedding)) {
-          similarity = calculateCosineSimilarity(testEmbedding, dbEmbedding);
-        } else if (typeof dbEmbedding === 'string') {
-          try {
-            const parsed = JSON.parse(dbEmbedding);
-            similarity = calculateCosineSimilarity(testEmbedding, parsed);
-          } catch {
-            similarity = 0;
-          }
-        }
-        
-        similarityTest.similarities.push({
-          embeddingId: embeddings[i].vector_id,
-          similarity: similarity,
-          format: Array.isArray(dbEmbedding) ? 'array' : 'string'
-        });
-      }
+    
+    // Verificar embeddings con chunks
+    const { data: embeddingsWithChunks, error: chunksError } = await supabase
+      .from('embeddings')
+      .select(`
+        vector_id,
+        chunk_id,
+        embedding,
+        chunks!inner(chunk_id, chunk_text)
+      `)
+      .limit(5);
+    
+    if (chunksError) {
+      console.error('❌ Error al verificar embeddings con chunks:', chunksError);
+    } else {
+      console.log('📄 Embeddings con chunks:', embeddingsWithChunks?.length || 0);
     }
-
+    
+    // Verificar chunks sin embeddings
+    const { data: chunksWithoutEmbeddings, error: noEmbError } = await supabase
+      .from('chunks')
+      .select('chunk_id, chunk_text')
+      .not('chunk_id', 'in', `(select chunk_id from embeddings)`)
+      .limit(5);
+    
+    if (noEmbError) {
+      console.error('❌ Error al verificar chunks sin embeddings:', noEmbError);
+    } else {
+      console.log('📄 Chunks sin embeddings:', chunksWithoutEmbeddings?.length || 0);
+    }
+    
+    // Probar la función match_documents
+    const testEmbedding = new Array(768).fill(0.1);
+    const { data: matchResult, error: matchError } = await supabase.rpc('match_documents', {
+      query_embedding: testEmbedding,
+      match_count: 5
+    });
+    
+    if (matchError) {
+      console.error('❌ Error en match_documents:', matchError);
+    } else {
+      console.log('✅ match_documents funcionó:', matchResult?.length || 0, 'resultados');
+    }
+    
     return NextResponse.json({
       success: true,
-      embeddingAnalysis,
-      similarityTest,
-      sampleChunks: chunks?.slice(0, 2).map(c => ({
-        chunk_id: c.chunk_id,
-        chunk_text: c.chunk_text?.substring(0, 100) + '...',
-        vector_id: c.vector_id
-      })),
+      total_embeddings: embeddingsCount || 0,
+      embeddings_with_chunks: embeddingsWithChunks?.length || 0,
+      chunks_without_embeddings: chunksWithoutEmbeddings?.length || 0,
+      match_documents_working: !matchError,
       errors: {
-        embeddings: embError,
-        chunks: chunksError
-      }
+        count: countError?.message,
+        chunks: chunksError?.message,
+        no_embeddings: noEmbError?.message,
+        match: matchError?.message
+      },
+      sample_embeddings: embeddingsWithChunks?.slice(0, 2).map(e => ({
+        vector_id: e.vector_id,
+        chunk_id: e.chunk_id,
+        has_embedding: !!e.embedding,
+        chunk_text_preview: (e.chunks as any)?.chunk_text?.substring(0, 100) + '...'
+      })) || []
     });
     
   } catch (error) {
-    console.error('Error en endpoint de debug de embeddings:', error);
+    console.error('Error en diagnóstico de embeddings:', error);
     return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido'
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido'
     }, { status: 500 });
   }
 }
