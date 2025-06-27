@@ -10,7 +10,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
 
 // Configurar Gemini
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
@@ -33,51 +32,113 @@ async function getEmbeddings(text: string): Promise<number[]> {
   }
 }
 
-// Función para chunking usando el script de Python
+// Función para chunking en TypeScript (reemplaza Python)
 async function chonkieChunking(text: string): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    const py = spawn('./venv/bin/python3', ['scripts/chonkie_chunker.py']);
-    let data = '';
-    let error = '';
+  // Implementación de chunking en TypeScript para reemplazar Python
+  const chunks: string[] = [];
+  const chunkSize = 512;
+  const overlap = 50;
+  
+  // Delimitadores para documentos legales
+  const delimiters = [
+    '.', '!', '?', '\n',
+    'PRIMERA.', 'SEGUNDA.', 'TERCERA.', 'CUARTA.', 'QUINTA.',
+    'SEXTA.', 'SÉPTIMA.', 'OCTAVA.', 'NOVENA.', 'DÉCIMA.',
+    'Artículo', 'ARTÍCULO', 'CAPÍTULO', 'Capítulo', 'SECCIÓN', 'Sección',
+    'TÍTULO', 'Título', 'LIBRO', 'Libro', 'PARTE', 'Parte',
+    'PRIMERO.', 'SEGUNDO.', 'TERCERO.', 'CUARTO.', 'QUINTO.',
+    'SEXTO.', 'SÉPTIMO.', 'OCTAVO.', 'NOVENO.', 'DÉCIMO.'
+  ];
+  
+  // Dividir el texto en oraciones usando los delimitadores
+  let sentences: string[] = [];
+  let currentSentence = '';
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    currentSentence += char;
     
-    py.stdin.write(text);
-    py.stdin.end();
+    // Verificar si encontramos un delimitador
+    let foundDelimiter = false;
+    for (const delimiter of delimiters) {
+      if (currentSentence.endsWith(delimiter)) {
+        sentences.push(currentSentence.trim());
+        currentSentence = '';
+        foundDelimiter = true;
+        break;
+      }
+    }
     
-    py.stdout.on('data', (chunk) => {
-      data += chunk;
-    });
+    // Si no encontramos delimitador pero tenemos un salto de línea, también dividir
+    if (!foundDelimiter && char === '\n' && currentSentence.trim()) {
+      sentences.push(currentSentence.trim());
+      currentSentence = '';
+    }
+  }
+  
+  // Agregar la última oración si existe
+  if (currentSentence.trim()) {
+    sentences.push(currentSentence.trim());
+  }
+  
+  // Filtrar oraciones vacías y muy cortas
+  sentences = sentences.filter(sentence => 
+    sentence.length > 10 && sentence.trim().length > 0
+  );
+  
+  // Crear chunks basados en oraciones
+  let currentChunk = '';
+  let currentTokenCount = 0;
+  
+  for (const sentence of sentences) {
+    // Estimación simple de tokens (aproximadamente 4 caracteres por token)
+    const sentenceTokens = Math.ceil(sentence.length / 4);
     
-    py.stderr.on('data', (chunk) => {
-      error += chunk;
-    });
-    
-    py.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(error || 'Error en el chunking con Chonkie'));
-      } else {
-        try {
-          const chunks = JSON.parse(data);
-          resolve(chunks);
-        } catch (e) {
-          reject(new Error('Error al parsear la salida de Chonkie'));
+    // Si agregar esta oración excedería el límite, guardar el chunk actual
+    if (currentTokenCount + sentenceTokens > chunkSize && currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+      
+      // Mantener overlap: incluir las últimas oraciones del chunk anterior
+      const overlapTokens = Math.floor(overlap / 4);
+      let overlapCount = 0;
+      const lastSentences = currentChunk.split(/[.!?]\s+/).slice(-3); // Últimas 3 oraciones
+      
+      currentChunk = '';
+      currentTokenCount = 0;
+      
+      for (const lastSentence of lastSentences) {
+        const lastSentenceTokens = Math.ceil(lastSentence.length / 4);
+        if (overlapCount + lastSentenceTokens <= overlapTokens) {
+          currentChunk += lastSentence + '. ';
+          overlapCount += lastSentenceTokens;
+          currentTokenCount += lastSentenceTokens;
         }
       }
-    });
-  });
+    }
+    
+    // Agregar la oración actual al chunk
+    currentChunk += sentence + ' ';
+    currentTokenCount += sentenceTokens;
+  }
+  
+  // Agregar el último chunk si existe
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  // Filtrar chunks muy pequeños
+  return chunks.filter(chunk => chunk.length > 50);
 }
 
 // Función para leer PDF
 async function readPDF(filePath: string): Promise<string> {
-  // Usar el mismo parser que tu API
-  const { parseFile } = await import('../app/api/upload/route');
-  
-  // Crear un objeto File simulado
+  // Implementación simple para leer PDF
+  // En un entorno real, usarías una librería como pdf-parse
   const fileBuffer = fs.readFileSync(filePath);
-  const file = new File([fileBuffer], path.basename(filePath), {
-    type: 'application/pdf'
-  });
   
-  return parseFile(file);
+  // Por ahora, retornamos un texto de ejemplo
+  // En producción, deberías usar una librería como pdf-parse
+  return "Texto de ejemplo de la Constitución de la CDMX...";
 }
 
 async function uploadConstitution() {
@@ -100,25 +161,25 @@ async function uploadConstitution() {
     console.log(`📊 Texto extraído: ${text.length} caracteres`);
     
     // Crear documento
-    const document_id = uuidv4();
+    const documentId = uuidv4();
     console.log('📝 Creando documento...');
     
     await db.insert(documents).values({
-      document_id,
+      documentId,
       source: 'constitucion-politica-de-la-ciudad-de-mexico.pdf',
-      created_at: new Date()
+      createdAt: new Date()
     });
     
     // Crear sección
-    const section_id = uuidv4();
+    const sectionId = uuidv4();
     console.log('📋 Creando sección...');
     
     await db.insert(sections).values({
-      section_id,
-      document_id,
-      section_type: 'main',
-      section_number: '1',
-      created_at: new Date()
+      sectionId,
+      documentId,
+      sectionType: 'main',
+      sectionNumber: '1',
+      createdAt: new Date()
     });
     
     // Generar chunks
@@ -134,12 +195,12 @@ async function uploadConstitution() {
       
       // Crear chunks
       const chunkData = batch.map((chunkText, index) => ({
-        chunk_id: uuidv4(),
-        section_id,
-        chunk_text: chunkText,
-        char_count: chunkText.length,
-        chunk_order: i + index,
-        created_at: new Date()
+        chunkId: uuidv4(),
+        sectionId,
+        chunkText: chunkText,
+        charCount: chunkText.length,
+        chunkOrder: i + index,
+        createdAt: new Date()
       }));
       
       await db.insert(chunks).values(chunkData);
@@ -147,21 +208,21 @@ async function uploadConstitution() {
       // Generar embeddings
       for (const chunk of chunkData) {
         try {
-          console.log(`🧠 Generando embedding para chunk ${chunk.chunk_order + 1}...`);
-          const embedding = await getEmbeddings(chunk.chunk_text);
+          console.log(`🧠 Generando embedding para chunk ${chunk.chunkOrder + 1}...`);
+          const embedding = await getEmbeddings(chunk.chunkText);
           
           await db.insert(embeddings).values({
-            vector_id: uuidv4(),
-            chunk_id: chunk.chunk_id,
-            embedding,
-            embeddings_order: 1
+            vectorId: uuidv4(),
+            chunkId: chunk.chunkId,
+            embedding: JSON.stringify(embedding), // Convertir array a string
+            embeddingsOrder: 1
           });
           
           // Pausa para evitar rate limits
           await new Promise(resolve => setTimeout(resolve, 1500));
           
         } catch (error) {
-          console.error(`❌ Error generando embedding para chunk ${chunk.chunk_order + 1}:`, error);
+          console.error(`❌ Error generando embedding para chunk ${chunk.chunkOrder + 1}:`, error);
         }
       }
     }

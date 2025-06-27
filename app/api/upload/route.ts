@@ -4,7 +4,6 @@ import mammoth from 'mammoth';
 import PDFParser from 'pdf2json';
 import { createClient } from '@/lib/supabase/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { spawn } from 'child_process';
 
 // Verificar la API key al inicio
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
@@ -349,31 +348,100 @@ async function getEmbeddingsBatch(texts: string[]): Promise<number[][]> {
 }
 
 async function chonkieChunking(text: string): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    const py = spawn('./venv/bin/python3', ['scripts/chonkie_chunker.py']);
-    let data = '';
-    let error = '';
-    py.stdin.write(text);
-    py.stdin.end();
-    py.stdout.on('data', (chunk) => {
-      data += chunk;
-    });
-    py.stderr.on('data', (chunk) => {
-      error += chunk;
-    });
-    py.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(error || 'Error en el chunking con Chonkie'));
-      } else {
-        try {
-          const chunks = JSON.parse(data);
-          resolve(chunks);
-        } catch (e) {
-          reject(new Error('Error al parsear la salida de Chonkie'));
+  // Implementación de chunking en TypeScript para reemplazar Python
+  const chunks: string[] = [];
+  const chunkSize = 512;
+  const overlap = 50;
+  
+  // Delimitadores para documentos legales
+  const delimiters = [
+    '.', '!', '?', '\n',
+    'PRIMERA.', 'SEGUNDA.', 'TERCERA.', 'CUARTA.', 'QUINTA.',
+    'SEXTA.', 'SÉPTIMA.', 'OCTAVA.', 'NOVENA.', 'DÉCIMA.',
+    'Artículo', 'ARTÍCULO', 'CAPÍTULO', 'Capítulo', 'SECCIÓN', 'Sección',
+    'TÍTULO', 'Título', 'LIBRO', 'Libro', 'PARTE', 'Parte',
+    'PRIMERO.', 'SEGUNDO.', 'TERCERO.', 'CUARTO.', 'QUINTO.',
+    'SEXTO.', 'SÉPTIMO.', 'OCTAVO.', 'NOVENO.', 'DÉCIMO.'
+  ];
+  
+  // Dividir el texto en oraciones usando los delimitadores
+  let sentences: string[] = [];
+  let currentSentence = '';
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    currentSentence += char;
+    
+    // Verificar si encontramos un delimitador
+    let foundDelimiter = false;
+    for (const delimiter of delimiters) {
+      if (currentSentence.endsWith(delimiter)) {
+        sentences.push(currentSentence.trim());
+        currentSentence = '';
+        foundDelimiter = true;
+        break;
+      }
+    }
+    
+    // Si no encontramos delimitador pero tenemos un salto de línea, también dividir
+    if (!foundDelimiter && char === '\n' && currentSentence.trim()) {
+      sentences.push(currentSentence.trim());
+      currentSentence = '';
+    }
+  }
+  
+  // Agregar la última oración si existe
+  if (currentSentence.trim()) {
+    sentences.push(currentSentence.trim());
+  }
+  
+  // Filtrar oraciones vacías y muy cortas
+  sentences = sentences.filter(sentence => 
+    sentence.length > 10 && sentence.trim().length > 0
+  );
+  
+  // Crear chunks basados en oraciones
+  let currentChunk = '';
+  let currentTokenCount = 0;
+  
+  for (const sentence of sentences) {
+    // Estimación simple de tokens (aproximadamente 4 caracteres por token)
+    const sentenceTokens = Math.ceil(sentence.length / 4);
+    
+    // Si agregar esta oración excedería el límite, guardar el chunk actual
+    if (currentTokenCount + sentenceTokens > chunkSize && currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+      
+      // Mantener overlap: incluir las últimas oraciones del chunk anterior
+      const overlapTokens = Math.floor(overlap / 4);
+      let overlapCount = 0;
+      const lastSentences = currentChunk.split(/[.!?]\s+/).slice(-3); // Últimas 3 oraciones
+      
+      currentChunk = '';
+      currentTokenCount = 0;
+      
+      for (const lastSentence of lastSentences) {
+        const lastSentenceTokens = Math.ceil(lastSentence.length / 4);
+        if (overlapCount + lastSentenceTokens <= overlapTokens) {
+          currentChunk += lastSentence + '. ';
+          overlapCount += lastSentenceTokens;
+          currentTokenCount += lastSentenceTokens;
         }
       }
-    });
-  });
+    }
+    
+    // Agregar la oración actual al chunk
+    currentChunk += sentence + ' ';
+    currentTokenCount += sentenceTokens;
+  }
+  
+  // Agregar el último chunk si existe
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  // Filtrar chunks muy pequeños
+  return chunks.filter(chunk => chunk.length > 50);
 }
 
 // Función auxiliar para dividir arrays en lotes
@@ -435,7 +503,7 @@ export async function POST(req: NextRequest) {
     if (userDocType && userDocType !== legalClassification.document_type) {
       needsConfirmation = true;
       warningMessage = `El tipo seleccionado por el usuario ('${userDocType}') no coincide con el sugerido por la IA ('${legalClassification.document_type}'). ¿Cuál quieres guardar?`;
-      finalDocumentType = userDocType;
+      finalDocumentType = userDocType as LegalClassification['document_type'];
     }
 
     // Si hay discrepancia y no está confirmado, solo devolver advertencia y NO procesar ni guardar nada
