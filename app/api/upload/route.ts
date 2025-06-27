@@ -625,6 +625,7 @@ export async function POST(req: NextRequest) {
       return {
         chunk_id: uuidv4(),
         document_id,
+        section_id,
         chunk_text: chunkText,
         chunk_order: index,
         article_number: primaryReference?.article_number || null,

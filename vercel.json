@@ -6,6 +6,9 @@
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 30
+    },
+    "app/api/upload/route.ts": {
+      "maxDuration": 300
     }
   }
 } 
