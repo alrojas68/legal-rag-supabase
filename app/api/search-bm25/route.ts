@@ -57,8 +57,6 @@ export async function POST(req: NextRequest) {
         .select(`
           chunk_id,
           chunk_text,
-          start_page,
-          end_page,
           char_count,
           document_id
         `)
@@ -97,8 +95,6 @@ export async function POST(req: NextRequest) {
         return {
           chunk_id: chunk.chunk_id,
           content: chunk.chunk_text,
-          start_page: chunk.start_page,
-          end_page: chunk.end_page,
           char_count: chunk.char_count,
           document_id: chunk.document_id,
           source: doc.source,

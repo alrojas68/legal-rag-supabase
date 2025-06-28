@@ -38,7 +38,7 @@ RETURNS TABLE (
     document_id UUID,
     source TEXT,
     article_number TEXT,
-    rank_score FLOAT
+    rank_score DOUBLE PRECISION
 )
 LANGUAGE plpgsql
 AS $$
@@ -51,7 +51,7 @@ BEGIN
         c.document_id,
         d.source,
         c.article_number,
-        ts_rank(c.chunk_text_tsv, to_tsquery('spanish', search_query)) as rank_score
+        ts_rank(c.chunk_text_tsv, to_tsquery('spanish', search_query))::double precision as rank_score
     FROM chunks c
     JOIN documents d ON c.document_id = d.document_id
     WHERE c.chunk_text_tsv @@ to_tsquery('spanish', search_query)
