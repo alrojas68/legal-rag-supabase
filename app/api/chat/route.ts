@@ -143,92 +143,21 @@ async function searchSimilarDocuments(query: string, supabase: any, limit: numbe
 async function searchDocumentsBM25(query: string, supabase: any, limit: number = 10): Promise<any[]> {
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
-    
-    // Usar la función RPC para búsqueda BM25
-    const { data: results, error } = await supabase.rpc('search_chunks_bm25', {
-      search_query: query,
-      result_limit: limit
+    // Llamar al endpoint /api/search-bm25 usando fetch
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/search-bm25`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit })
     });
-
-    if (error) {
-      console.error('❌ Error en búsqueda BM25:', error);
-      
-      // Fallback: búsqueda simple con ILIKE
-      console.log('🔄 BM25: Intentando búsqueda fallback con ILIKE...');
-      const { data: fallbackResults, error: fallbackError } = await supabase
-        .from('chunks')
-        .select(`
-          chunk_id,
-          chunk_text,
-          start_page,
-          end_page,
-          char_count,
-          sections!inner(
-            section_id,
-            section_type,
-            section_number,
-            documents!inner(
-              document_id,
-              source,
-              publication_date,
-              last_reform_date,
-              jurisdiction,
-              doc_type
-            )
-          )
-        `)
-        .ilike('chunk_text', `%${query}%`)
-        .limit(limit);
-
-      if (fallbackError) {
-        console.error('❌ Error en fallback BM25:', fallbackError);
-        return [];
-      }
-
-      const processedResults = fallbackResults?.map((chunk: any) => ({
-        chunk_id: chunk.chunk_id,
-        content: chunk.chunk_text,
-        start_page: chunk.start_page,
-        end_page: chunk.end_page,
-        char_count: chunk.char_count,
-        document_id: chunk.sections.documents.document_id,
-        source: chunk.sections.documents.source,
-        publication_date: chunk.sections.documents.publication_date,
-        last_reform_date: chunk.sections.documents.last_reform_date,
-        jurisdiction: chunk.sections.documents.jurisdiction,
-        doc_type: chunk.sections.documents.doc_type,
-        section_type: chunk.sections.section_type,
-        section_number: chunk.sections.section_number,
-        rank_score: 1.0 // Score fijo para fallback
-      })) || [];
-
-      console.log(`✅ BM25 Fallback: Encontrados ${processedResults.length} resultados`);
-      return processedResults;
+    const result = await response.json();
+    if (!result.success) {
+      console.error('❌ Error en búsqueda BM25 vía API:', result.error || result.details);
+      return [];
     }
-
-    // Procesar resultados de la función RPC
-    const processedResults = results?.map((chunk: any) => ({
-      chunk_id: chunk.chunk_id,
-      content: chunk.chunk_text,
-      start_page: chunk.start_page,
-      end_page: chunk.end_page,
-      char_count: chunk.char_count,
-      document_id: chunk.document_id,
-      source: chunk.source,
-      publication_date: chunk.publication_date,
-      last_reform_date: chunk.last_reform_date,
-      jurisdiction: chunk.jurisdiction,
-      doc_type: chunk.doc_type,
-      section_type: chunk.section_type,
-      section_number: chunk.section_number,
-      rank_score: chunk.rank_score
-    })) || [];
-
-    console.log(`✅ BM25: Encontrados ${processedResults.length} resultados`);
-    return processedResults;
-
+    console.log(`✅ BM25 vía API: Resultados procesados: ${result.results?.length || 0}`);
+    return result.results || [];
   } catch (error) {
-    console.error('❌ Error general en BM25:', error);
+    console.error('❌ Error general en BM25 vía API:', error);
     return [];
   }
 }
