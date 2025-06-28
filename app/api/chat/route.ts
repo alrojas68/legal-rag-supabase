@@ -144,7 +144,9 @@ async function searchDocumentsBM25(query: string, supabase: any, limit: number =
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
     // Llamar al endpoint /api/search-bm25 usando fetch con URL absoluta
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     const response = await fetch(`${baseUrl}/api/search-bm25`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
