@@ -143,8 +143,9 @@ async function searchSimilarDocuments(query: string, supabase: any, limit: numbe
 async function searchDocumentsBM25(query: string, supabase: any, limit: number = 10): Promise<any[]> {
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
-    // Llamar al endpoint /api/search-bm25 usando fetch
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/search-bm25`, {
+    // Llamar al endpoint /api/search-bm25 usando fetch con URL absoluta
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/search-bm25`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, limit })
