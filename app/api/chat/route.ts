@@ -147,11 +147,18 @@ async function searchDocumentsBM25(query: string, supabase: any, limit: number =
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-    const response = await fetch(`${baseUrl}/api/search-bm25`, {
+    const finalUrl = `${baseUrl}/api/search-bm25`;
+    console.log('🔗 URL final para BM25:', finalUrl);
+    const response = await fetch(finalUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, limit })
     });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('❌ Error HTTP en BM25:', response.status, text);
+      return [];
+    }
     const result = await response.json();
     if (!result.success) {
       console.error('❌ Error en búsqueda BM25 vía API:', result.error || result.details);
