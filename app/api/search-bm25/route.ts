@@ -36,7 +36,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient();
     
-    console.log('🔍 BM25: Buscando documentos para:', processedQuery);
+    console.log('🔍 BM25: Enviando a función search_chunks_bm25:', {
+      search_query: processedQuery,
+      result_limit: limit
+    });
     
     // Usar la función RPC para búsqueda BM25
     const { data: results, error } = await supabase.rpc('search_chunks_bm25', {
@@ -46,7 +49,6 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('❌ Error en búsqueda BM25:', error);
-      
       // Fallback: búsqueda simple con ILIKE
       console.log('🔄 Intentando búsqueda fallback con ILIKE...');
       // Obtener chunks y luego hacer join manual a documentos
@@ -64,12 +66,15 @@ export async function POST(req: NextRequest) {
         .limit(limit);
 
       if (fallbackError) {
+        console.error('❌ Error en fallback BM25:', fallbackError);
         return NextResponse.json({
           success: false,
           error: 'Error en búsqueda BM25 y fallback',
           details: error.message
         });
       }
+
+      console.log('🔍 BM25 Fallback: Chunks encontrados:', fallbackChunks?.length || 0);
 
       // Obtener los document_id únicos
       const docIds = (fallbackChunks || []).map((chunk: any) => chunk.document_id).filter(Boolean);
@@ -84,6 +89,7 @@ export async function POST(req: NextRequest) {
             documentsMap[doc.document_id] = doc;
           }
         }
+        console.log('🔍 BM25 Fallback: Documentos encontrados:', Object.keys(documentsMap).length);
       }
 
       const processedResults = (fallbackChunks || []).map((chunk: any) => {
@@ -104,7 +110,7 @@ export async function POST(req: NextRequest) {
         };
       });
 
-      console.log(`✅ BM25 Fallback: Encontrados ${processedResults.length} resultados`);
+      console.log(`✅ BM25 Fallback: Resultados procesados: ${processedResults.length}`);
 
       return NextResponse.json({
         success: true,
@@ -115,6 +121,8 @@ export async function POST(req: NextRequest) {
         timestamp: new Date().toISOString()
       });
     }
+
+    console.log('🔍 BM25: Resultados de función search_chunks_bm25:', results?.length || 0);
 
     // Procesar resultados de la función RPC
     const processedResults = results?.map((chunk: any) => ({
@@ -134,7 +142,7 @@ export async function POST(req: NextRequest) {
       rank_score: chunk.rank_score
     })) || [];
 
-    console.log(`✅ BM25: Encontrados ${processedResults.length} resultados`);
+    console.log(`✅ BM25: Resultados procesados: ${processedResults.length}`);
 
     return NextResponse.json({
       success: true,
