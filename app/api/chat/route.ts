@@ -425,7 +425,7 @@ export async function POST(req: NextRequest) {
         .insert({
           query: query,
           response: response,
-          documents_used: contextDocs.map((doc: any) => doc.document_id || doc.chunk_id),
+          documents_used: contextDocs.map((doc: any) => String(doc.document_id).trim() || doc.chunk_id),
           session_id: req.headers.get('x-session-id') || 'default-session',
           created_at: new Date().toISOString()
         });
@@ -446,7 +446,7 @@ export async function POST(req: NextRequest) {
           count: vectorResults.length,
           documents: vectorResults.map((doc: any) => ({
             chunk_id: doc.chunk_id,
-            document_id: doc.document_id,
+            document_id: String(doc.document_id).trim(),
             source: doc.source,
             content: doc.content || doc.chunk_text,
             similarity_score: doc.similarity_score
@@ -456,7 +456,7 @@ export async function POST(req: NextRequest) {
           count: bm25Results.length,
           documents: bm25Results.map((doc: any) => ({
             chunk_id: doc.chunk_id,
-            document_id: doc.document_id,
+            document_id: String(doc.document_id).trim(),
             source: doc.source,
             content: doc.content,
             rank_score: doc.rank_score

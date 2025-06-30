@@ -92,6 +92,7 @@ export const legalHierarchy = pgTable("legal_hierarchy", {
 
 export const chunks = pgTable("chunks", {
 	chunkId: uuid("chunk_id").primaryKey().notNull(),
+	documentId: uuid("document_id"),
 	sectionId: uuid("section_id"),
 	chunkText: text("chunk_text").notNull(),
 	charCount: integer("char_count").notNull(),

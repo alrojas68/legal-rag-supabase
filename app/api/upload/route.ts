@@ -453,12 +453,30 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
+  // Agregar headers CORS
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
   try {
     if (!GOOGLE_API_KEY) {
       return NextResponse.json(
         { error: 'La API key de Gemini no está configurada' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -470,15 +488,15 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json(
         { error: 'No se recibió ningún archivo' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    // Verificar tamaño del archivo (10MB máximo)
-    if (file.size > 10 * 1024 * 1024) {
+    // Verificar tamaño del archivo (100MB máximo para uso local)
+    if (file.size > 100 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'El archivo excede el tamaño máximo permitido de 10MB' },
-        { status: 400 }
+        { error: 'El archivo excede el tamaño máximo permitido de 100MB' },
+        { status: 400, headers: corsHeaders }
       );
     }
     
@@ -487,7 +505,7 @@ export async function POST(req: NextRequest) {
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
         { error: 'No se pudo extraer texto del archivo' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -516,7 +534,7 @@ export async function POST(req: NextRequest) {
           user_selected_type: userDocType,
           ia_suggested_type: legalClassification.document_type
         }
-      });
+      }, { headers: corsHeaders });
     }
 
     // 3. Continuar con el flujo normal, procesar y guardar todo
@@ -525,7 +543,7 @@ export async function POST(req: NextRequest) {
     if (chunks.length === 0) {
       return NextResponse.json(
         { error: 'No se generaron chunks del texto' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -559,7 +577,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json(
         { error: 'Error al guardar el documento en la base de datos', details: docError },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
     
@@ -580,7 +598,7 @@ export async function POST(req: NextRequest) {
       console.error('Error al crear sección:', sectionError);
       return NextResponse.json(
         { error: 'Error al crear la sección principal del documento', details: sectionError },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -608,7 +626,7 @@ export async function POST(req: NextRequest) {
       console.error('Error al insertar jerarquía legal:', hierarchyError);
       return NextResponse.json(
         { error: 'Error al clasificar el documento legalmente' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -651,7 +669,7 @@ export async function POST(req: NextRequest) {
         console.error(`Error al insertar lote ${i + 1} de chunks:`, chunkError);
         return NextResponse.json(
           { error: 'Error al procesar el contenido del documento' },
-          { status: 500 }
+          { status: 500, headers: corsHeaders }
         );
       }
 
@@ -669,7 +687,7 @@ export async function POST(req: NextRequest) {
         console.error(`Error al insertar lote ${i + 1} de embeddings:`, embError);
         return NextResponse.json(
           { error: 'Error al generar los embeddings del documento' },
-          { status: 500 }
+          { status: 500, headers: corsHeaders }
         );
       }
 
@@ -692,12 +710,12 @@ export async function POST(req: NextRequest) {
       },
       needsConfirmation: false,
       warningMessage: ''
-    });
+    }, { headers: corsHeaders });
   } catch (e: any) {
     console.error('Error en el endpoint /api/upload:', e);
     return NextResponse.json(
       { error: e.message || 'Error interno del servidor' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 } 

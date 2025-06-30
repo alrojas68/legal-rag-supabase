@@ -50,6 +50,15 @@ export function FileUpload() {
           formData.append('jurisdiction', jurisdiction);
           formData.append('docType', confirmedType || '');
 
+          console.log('🔄 Iniciando upload de archivo:', file.name);
+          console.log('📋 Datos del formulario:', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            jurisdiction,
+            docType: confirmedType
+          });
+
           // Simular progreso
           const progressInterval = setInterval(() => {
             setProgress(prev => {
@@ -61,12 +70,28 @@ export function FileUpload() {
             });
           }, 200);
 
+          console.log('🌐 Enviando petición a /api/upload...');
+          
           const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData,
           });
 
+          console.log('📡 Respuesta recibida:', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Error en respuesta:', errorText);
+            throw new Error(`Error ${response.status}: ${errorText}`);
+          }
+
           const data = await response.json();
+          console.log('📄 Datos de respuesta:', data);
 
           clearInterval(progressInterval);
           setProgress(100);
@@ -86,10 +111,6 @@ export function FileUpload() {
             return;
           }
 
-          if (!response.ok) {
-            throw new Error(data.error || 'Error al subir el archivo');
-          }
-
           setUploadedFiles(prev => [...prev, file.name]);
           toast.success(`Archivo ${file.name} procesado exitosamente`);
           needsRetry = false;
@@ -98,8 +119,18 @@ export function FileUpload() {
         } while (needsRetry);
       }
     } catch (error) {
-      console.error('Error:', error);
-      toast.error(error instanceof Error ? error.message : 'Error al procesar el archivo');
+      console.error('❌ Error detallado en onDrop:', error);
+      console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+      
+      // Mostrar error más específico
+      let errorMessage = 'Error al procesar el archivo';
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        errorMessage = 'Error de conexión: No se pudo conectar con el servidor. Verifica que el servidor esté ejecutándose.';
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage);
       setProgress(0);
     } finally {
       setUploading(false);
@@ -166,7 +197,7 @@ export function FileUpload() {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       'application/pdf': ['.pdf']
     },
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 100 * 1024 * 1024, // 100MB para uso local
     onDropRejected: (fileRejections) => {
       const errors = fileRejections[0].errors;
       const errorMessage = errors[0].message;
@@ -296,7 +327,7 @@ export function FileUpload() {
                     : 'Arrastra y suelta archivos aquí, o haz clic para seleccionar'}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Formatos soportados: DOCX, PDF, TXT (máximo 10MB por archivo)
+                  Formatos soportados: DOCX, PDF, TXT (máximo 100MB por archivo)
                 </p>
                 <Button variant="outline" className="bg-white dark:bg-gray-800">
                   Seleccionar archivo

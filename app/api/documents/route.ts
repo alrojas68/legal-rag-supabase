@@ -18,43 +18,45 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Obtener todas las secciones y chunks de una vez para eficiencia
-    const { data: sections, error: sectionsError } = await supabase
-      .from('sections')
-      .select('section_id, document_id');
-    if (sectionsError) {
-      console.error('Error al obtener secciones:', sectionsError);
-      return NextResponse.json(
-        { error: `Error al obtener las secciones: ${sectionsError.message}` },
-        { status: 500 }
-      );
-    }
-
-    const { data: chunks, error: chunksError } = await supabase
-      .from('chunks')
-      .select('chunk_id, chunk_text, section_id')
-      .limit(10000);
-    if (chunksError) {
-      console.error('Error al obtener chunks:', chunksError);
-      return NextResponse.json(
-        { error: `Error al obtener los chunks: ${chunksError.message}` },
-        { status: 500 }
-      );
-    }
-
-    // Mapear secciones por documento
-    const seccionesPorDocumento: Record<string, string[]> = {};
-    for (const section of sections || []) {
-      if (!seccionesPorDocumento[section.document_id]) {
-        seccionesPorDocumento[section.document_id] = [];
+    // Obtener todos los chunks usando paginación para evitar límites
+    let allChunks: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    
+    while (true) {
+      const { data: chunksPage, error: chunksError } = await supabase
+        .from('chunks')
+        .select('chunk_id, chunk_text, document_id')
+        .range(from, from + pageSize - 1);
+      
+      if (chunksError) {
+        console.error('Error al obtener chunks:', chunksError);
+        return NextResponse.json(
+          { error: `Error al obtener los chunks: ${chunksError.message}` },
+          { status: 500 }
+        );
       }
-      seccionesPorDocumento[section.document_id].push(section.section_id);
+      
+      if (!chunksPage || chunksPage.length === 0) {
+        break; // No hay más chunks
+      }
+      
+      allChunks = allChunks.concat(chunksPage);
+      from += pageSize;
+      
+      // Si trajo menos de pageSize, significa que ya no hay más
+      if (chunksPage.length < pageSize) {
+        break;
+      }
     }
+    
+    const chunks = allChunks;
 
     // Mapear chunks por documento
     const processedDocuments = (documents || []).map((doc) => {
-      const secciones = seccionesPorDocumento[doc.document_id] || [];
-      const chunksDelDocumento = (chunks || []).filter(chunk => secciones.includes(chunk.section_id));
+      const chunksDelDocumento = (chunks || []).filter(chunk =>
+        String(chunk.document_id).trim() === String(doc.document_id).trim()
+      );
       const totalCharacters = chunksDelDocumento.reduce((total, chunk) => total + (chunk.chunk_text?.length || 0), 0);
       return {
         id: doc.document_id,

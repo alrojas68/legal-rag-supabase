@@ -32,7 +32,7 @@ export async function DELETE(
     const { data: sections, error: sectionsQueryError } = await supabase
       .from('sections')
       .select('section_id')
-      .eq('document_id', id);
+      .eq('document_id', String(id).trim());
 
     if (sectionsQueryError) {
       console.error('Error al obtener secciones:', sectionsQueryError);
@@ -51,8 +51,8 @@ export async function DELETE(
       // 2a. Obtener todos los chunks de las secciones
       const { data: chunks, error: chunksQueryError } = await supabase
         .from('chunks')
-        .select('chunk_id')
-        .in('section_id', sectionIds);
+        .select('chunk_id, chunk_text, document_id');
+      console.log('TOTAL CHUNKS TRAIDOS:', chunks?.length);
 
       if (chunksQueryError) {
         console.error('Error al obtener chunks:', chunksQueryError);
@@ -63,6 +63,11 @@ export async function DELETE(
       }
 
       console.log(`🧩 Encontrados ${chunks?.length || 0} chunks`);
+      console.log('PRIMEROS CHUNKS:', (chunks || []).slice(0, 5).map(c => c.document_id));
+
+      const docId = 'dd8b664a-cd48-4d1c-8a03-c82af5e238b4';
+      const matchingChunks = (chunks || []).filter(chunk => String(chunk.document_id).trim() === docId);
+      console.log('CHUNKS CON DOC_ID PROBLEMATICO:', matchingChunks.length);
 
       // 2b. Si hay chunks, eliminar embeddings en lotes de 50
       if (chunks && chunks.length > 0) {
@@ -143,7 +148,7 @@ export async function DELETE(
     const { error: sectionsError } = await supabase
       .from('sections')
       .delete()
-      .eq('document_id', id);
+      .eq('document_id', String(id).trim());
 
     if (sectionsError) {
       console.error('Error al eliminar secciones:', sectionsError);
@@ -178,7 +183,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('documents')
       .delete()
-      .eq('document_id', id);
+      .eq('document_id', String(id).trim());
 
     if (error) {
       console.error('Error al eliminar documento:', error);

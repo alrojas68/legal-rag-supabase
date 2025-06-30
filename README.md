@@ -22,6 +22,8 @@
 ### ✨ Funcionalidades Principales
 - **Chat Legal Inteligente**: Conversaciones con IA especializada en derecho mexicano
 - **Búsqueda Híbrida Avanzada**: Combinación de búsqueda vectorial (semántica) y BM25 (texto completo)
+- **Sistema BM25 Robusto**: Búsqueda de texto completo con procesamiento inteligente de consultas
+- **Sistema de Fallback**: Recuperación automática cuando falla la búsqueda principal
 - **Comparación de Métodos**: Visualización en tiempo real de resultados de ambos métodos
 - **Respuesta Combinada**: Generación de respuestas usando los mejores resultados de ambos métodos
 - **Artículos Referenciados**: Resumen automático de artículos legales con ordenamiento por relevancia
@@ -31,10 +33,13 @@
 - **Historial de Conversaciones**: Persistencia de chats por usuario
 - **Citas Legales**: Referencias automáticas a artículos constitucionales y leyes
 - **Interfaz Moderna**: UI responsive con tema claro/oscuro
+- **Logging Detallado**: Sistema de logs para debugging y monitoreo
 
 ### 🔍 Búsqueda Híbrida Inteligente
 - **Búsqueda Vectorial (Semántica)**: Similitud semántica con embeddings de Google Gemini
 - **Búsqueda BM25 (Texto Completo)**: Coincidencia de términos específicos con índices de texto completo
+- **Procesamiento de Consultas**: Eliminación automática de stopwords y signos de puntuación
+- **Sistema de Fallback**: Búsqueda ILIKE automática cuando falla BM25
 - **Comparación Visual**: Resultados de ambos métodos mostrados lado a lado
 - **Respuesta Combinada**: Integración inteligente de ambos métodos para respuestas más completas
 - **Artículos Referenciados**: Extracción automática y ordenamiento por relevancia
@@ -60,8 +65,14 @@
 - **Casos de Uso**: Preguntas conceptuales, análisis de contexto legal
 - **Ejemplo**: "¿Cuáles son los derechos de los trabajadores en caso de despido?"
 
-### Método BM25 (Texto Completo)
+### Método BM25 (Texto Completo) - Mejorado
 - **Funcionamiento**: Búsqueda de términos específicos con ranking de relevancia
+- **Procesamiento Inteligente**: 
+  - Eliminación automática de stopwords en español
+  - Filtrado de signos de puntuación
+  - Filtrado de palabras cortas (< 3 caracteres)
+  - Conversión a formato `to_tsquery` para PostgreSQL
+- **Sistema de Fallback**: Búsqueda ILIKE automática si falla BM25
 - **Ventajas**: Preciso para artículos específicos y términos técnicos
 - **Casos de Uso**: Búsqueda de artículos específicos, términos legales exactos
 - **Ejemplo**: "Artículo 123 constitucional", "sociedad conyugal"
@@ -367,11 +378,52 @@ pip list | grep chonkie
 - Usa `console.log` en el frontend para debugging
 - Verifica índices de texto completo en PostgreSQL
 
+### Sistema de Logging Mejorado
+El sistema incluye logging detallado para facilitar el debugging:
+
+#### Logs de Búsqueda BM25
+```typescript
+// Logs automáticos en /api/search-bm25
+🔍 BM25: Query original: [consulta del usuario]
+🔍 BM25: Query procesada para to_tsquery: [consulta procesada]
+🔍 BM25: Enviando a función search_chunks_bm25: [parámetros]
+✅ BM25: Resultados procesados: [número de resultados]
+```
+
+#### Logs de Fallback
+```typescript
+// Cuando se activa el sistema de fallback
+❌ Error en búsqueda BM25: [error]
+🔄 Intentando búsqueda fallback con ILIKE...
+🔍 BM25 Fallback: Chunks encontrados: [número]
+✅ BM25 Fallback: Resultados procesados: [número]
+```
+
+#### Logs de Chat
+```typescript
+// Logs del sistema de chat híbrido
+🔍 Vectorial: [número] resultados
+🔍 BM25: [número] resultados
+🔍 Combinados: [número] resultados únicos
+📋 Artículos referenciados: [número] artículos
+```
+
+### Monitoreo en Tiempo Real
+- **Consola del navegador**: Logs detallados de cada búsqueda
+- **Terminal del servidor**: Logs de API y procesamiento
+- **Supabase Dashboard**: Logs de base de datos y funciones RPC
+- **Vercel Dashboard**: Logs de despliegue y errores en producción
+
 ### Endpoints de Diagnóstico
 - `/api/debug`: Verificar configuración general
 - `/api/debug-embeddings`: Probar generación de embeddings
 - `/api/test-supabase`: Verificar conexión a Supabase
 - `/api/search-bm25`: Probar búsqueda BM25 independiente
+- `/api/search-article`: Búsqueda específica de artículos
+- `/api/check-embeddings`: Verificar estado de embeddings en la base de datos
+- `/api/diagnose`: Diagnóstico completo del sistema
+- `/api/test-match`: Probar función de matching de documentos
+- `/api/test-upload`: Probar carga de documentos
 
 ## 🤝 Contribución
 
@@ -394,6 +446,33 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 - [shadcn/ui](https://ui.shadcn.com/) por los componentes de UI
 - [pgvector](https://github.com/pgvector/pgvector) por el soporte vectorial
 - [PostgreSQL](https://www.postgresql.org/) por la base de datos robusta
+
+## 🆕 Mejoras Recientes
+
+### Sistema BM25 Robusto (v2.0)
+- **Procesamiento Inteligente de Consultas**: Eliminación automática de 100+ stopwords en español
+- **Filtrado Avanzado**: Eliminación de signos de puntuación y palabras cortas
+- **Conversión a to_tsquery**: Optimización para búsquedas PostgreSQL de texto completo
+- **Sistema de Fallback**: Recuperación automática con búsqueda ILIKE cuando falla BM25
+- **Logging Detallado**: Sistema completo de logs para debugging y monitoreo
+
+### Mejoras en el Manejo de Errores
+- **Recuperación Automática**: El sistema continúa funcionando incluso si falla un método
+- **Mensajes de Error Informativos**: Errores claros y específicos para debugging
+- **Validación de Entrada**: Verificación de consultas antes del procesamiento
+- **Timeouts Inteligentes**: Manejo de timeouts para evitar bloqueos
+
+### Optimizaciones de Rendimiento
+- **Búsquedas Paralelas**: Vectorial y BM25 se ejecutan simultáneamente
+- **Deduplicación Eficiente**: Eliminación rápida de resultados duplicados
+- **Índices Optimizados**: Índices de texto completo para búsquedas BM25 rápidas
+- **Caché de Embeddings**: Reutilización de embeddings cuando es posible
+
+### Experiencia de Usuario Mejorada
+- **Respuestas Más Precisas**: Combinación inteligente de métodos de búsqueda
+- **Información Detallada**: Método de búsqueda y score para cada resultado
+- **Artículos Referenciados**: Resumen automático ordenado por relevancia
+- **Interfaz Responsiva**: Mejor experiencia en dispositivos móviles
 
 ---
 

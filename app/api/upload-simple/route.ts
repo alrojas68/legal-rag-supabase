@@ -214,10 +214,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verificar tamaño del archivo (10MB máximo)
-    if (file.size > 10 * 1024 * 1024) {
+    // Verificar tamaño del archivo (100MB máximo para uso local)
+    if (file.size > 100 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'El archivo excede el tamaño máximo permitido de 10MB' },
+        { error: 'El archivo excede el tamaño máximo permitido de 100MB' },
         { status: 400 }
       );
     }

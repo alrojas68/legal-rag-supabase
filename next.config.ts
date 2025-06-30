@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
     unoptimized: false,
   },
   
+  // Configuración para archivos grandes
+  experimental: {
+    // Configuración para React 19
+    reactCompiler: false,
+  },
+  
   // Configuración de seguridad
   headers: async () => {
     return [
@@ -46,6 +52,7 @@ const nextConfig: NextConfig = {
         tls: false,
       };
     }
+    
     return config;
   },
   

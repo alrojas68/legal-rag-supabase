@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       console.log('🔍 BM25 Fallback: Chunks encontrados:', fallbackChunks?.length || 0);
 
       // Obtener los document_id únicos
-      const docIds = (fallbackChunks || []).map((chunk: any) => chunk.document_id).filter(Boolean);
+      const docIds = (fallbackChunks || []).map((chunk: any) => String(chunk.document_id).trim()).filter(Boolean);
       let documentsMap: Record<string, any> = {};
       if (docIds.length > 0) {
         const { data: docsData } = await supabase
@@ -84,14 +84,14 @@ export async function POST(req: NextRequest) {
           .in('document_id', docIds);
         if (docsData) {
           for (const doc of docsData) {
-            documentsMap[doc.document_id] = doc;
+            documentsMap[String(doc.document_id).trim()] = doc;
           }
         }
         console.log('🔍 BM25 Fallback: Documentos encontrados:', Object.keys(documentsMap).length);
       }
 
       const processedResults = (fallbackChunks || []).map((chunk: any) => {
-        const doc = documentsMap[chunk.document_id] || {};
+        const doc = documentsMap[String(chunk.document_id).trim()] || {};
         return {
           chunk_id: chunk.chunk_id,
           content: chunk.chunk_text,
