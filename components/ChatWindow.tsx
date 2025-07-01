@@ -321,39 +321,39 @@ const ChatWindow = () => {
                       </div>
                     )}
                     
-                    {/* NUEVO: Mostrar resumen de artículos referenciados */}
+                    {/* Artículos referenciados al final */}
                     {message.referenced_articles && message.referenced_articles.length > 0 && (
                       <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
                         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                          <div className="w-4 h-4 bg-orange-500 rounded-full mr-2" />
-                          Artículos Referenciados
+                          <FileText className="w-4 h-4 mr-2" />
+                          Artículos Referenciados ({message.referenced_articles.length})
                         </h3>
                         <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
                           <div className="space-y-3">
                             {message.referenced_articles.map((article, index) => (
-                              <div key={index} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border">
+                              <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600 shadow-sm">
                                 <div className="flex-1">
-                                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                                     Artículo {article.article}
                                   </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     {article.document}
                                   </div>
                                 </div>
-                                <div className="flex items-center space-x-2">
+                                <div className="flex items-center space-x-3">
                                   <div className="flex space-x-1">
                                     {article.methods.includes('Vectorial') && (
-                                      <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                                      <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
                                         Vectorial
                                       </span>
                                     )}
                                     {article.methods.includes('BM25') && (
-                                      <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                                      <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium">
                                         BM25
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
                                     Score: {Math.max(...article.scores).toFixed(3)}
                                   </div>
                                 </div>
@@ -363,6 +363,51 @@ const ChatWindow = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+                
+                {/* Mostrar artículos referenciados también cuando NO hay comparación */}
+                {message.role === 'assistant' && message.referenced_articles && message.referenced_articles.length > 0 && !message.comparison && (
+                  <div className="mt-4">
+                    <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Artículos Referenciados ({message.referenced_articles.length})
+                      </h3>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
+                        <div className="space-y-3">
+                          {message.referenced_articles.map((article, index) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600 shadow-sm">
+                              <div className="flex-1">
+                                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                  Artículo {article.article}
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                  {article.document}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <div className="flex space-x-1">
+                                  {article.methods.includes('Vectorial') && (
+                                    <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
+                                      Vectorial
+                                    </span>
+                                  )}
+                                  {article.methods.includes('BM25') && (
+                                    <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium">
+                                      BM25
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                  Score: {Math.max(...article.scores).toFixed(3)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

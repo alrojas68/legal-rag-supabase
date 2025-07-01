@@ -1,6 +1,111 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Función para stemming básico en español (simplificada)
+function stemSpanishWord(word: string): string {
+  // Reglas básicas de stemming para español
+  const suffixes = [
+    { pattern: /(ar|er|ir)$/, replacement: '' }, // verbos infinitivos
+    { pattern: /(ando|iendo)$/, replacement: '' }, // gerundios
+    { pattern: /(ado|ido)$/, replacement: '' }, // participios
+    { pattern: /(a|e|i|o|u)s$/, replacement: '' }, // plurales
+    { pattern: /(mente)$/, replacement: '' }, // adverbios
+    { pattern: /(ción|siones)$/, replacement: 'c' }, // sustantivos en -ción
+    { pattern: /(dad|dades)$/, replacement: 'd' }, // sustantivos en -dad
+    { pattern: /(tad|tades)$/, replacement: 't' }, // sustantivos en -tad
+  ];
+
+  let stemmed = word.toLowerCase();
+  for (const { pattern, replacement } of suffixes) {
+    if (pattern.test(stemmed)) {
+      stemmed = stemmed.replace(pattern, replacement);
+      break; // Solo aplicar una regla por palabra
+    }
+  }
+  
+  return stemmed;
+}
+
+// Stopwords optimizadas para dominio legal
+const legalStopwords = [
+  // Stopwords generales
+  'de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'sí', 'porque', 'esta', 'entre', 'cuando', 'muy', 'sin', 'sobre', 'también', 'me', 'hasta', 'hay', 'donde', 'quien', 'desde', 'todo', 'nos', 'durante', 'todos', 'uno', 'les', 'ni', 'contra', 'otros', 'ese', 'eso', 'ante', 'ellos', 'e', 'esto', 'mí', 'antes', 'algunos', 'qué', 'unos', 'yo', 'otro', 'otras', 'otra', 'él', 'tanto', 'esa', 'estos', 'mucho', 'quienes', 'nada', 'muchos', 'cual', 'poco', 'ella', 'estar', 'estas', 'algunas', 'algo', 'nosotros', 'mi', 'mis', 'tú', 'te', 'ti', 'tu', 'tus', 'ellas', 'nosotras', 'vosotros', 'vosotras', 'os', 'mío', 'mía', 'míos', 'mías', 'tuyo', 'tuya', 'tuyos', 'tuyas', 'suyo', 'suya', 'suyos', 'suyas', 'nuestro', 'nuestra', 'nuestros', 'nuestras', 'vuestro', 'vuestra', 'vuestros', 'vuestras', 'esos', 'esas', 'estoy', 'estás', 'está', 'estamos', 'estáis', 'están', 'esté', 'estés', 'estemos', 'estéis', 'estén', 'estaré', 'estarás', 'estará', 'estaremos', 'estaréis', 'estarán', 'estaría', 'estarías', 'estaríamos', 'estaríais', 'estarían', 'estaba', 'estabas', 'estábamos', 'estabais', 'estaban', 'estuve', 'estuviste', 'estuvo', 'estuvimos', 'estuvisteis', 'estuvieron', 'estuviera', 'estuvieras', 'estuviéramos', 'estuvierais', 'estuvieran', 'estuviese', 'estuvieses', 'estuviésemos', 'estuvieseis', 'estuviesen', 'estando', 'estado', 'estada', 'estados', 'estadas', 'estad',
+  // Términos legales que SÍ queremos conservar (NO son stopwords)
+  // 'artículo', 'ley', 'código', 'reglamento', 'decreto', 'norma', 'cláusula', 'sección', 'capítulo', 'título'
+];
+
+// Diccionario de sinónimos legales
+const legalSynonyms: Record<string, string[]> = {
+  'ley': ['norma', 'reglamento', 'código', 'decreto'],
+  'artículo': ['art', 'artículo'],
+  'código': ['código', 'ley', 'norma'],
+  'derecho': ['derechos', 'garantía', 'garantías'],
+  'obligación': ['obligaciones', 'deber', 'deberes'],
+  'responsabilidad': ['responsabilidades', 'culpa', 'culpabilidad'],
+  'procedimiento': ['procedimientos', 'trámite', 'trámites'],
+  'registro': ['registros', 'inscripción', 'inscripciones'],
+  'documento': ['documentos', 'acta', 'actas'],
+  'oficial': ['oficiales', 'público', 'públicos'],
+  'civil': ['civiles', 'civil'],
+  'penal': ['penales', 'penal'],
+  'administrativo': ['administrativos', 'administrativa'],
+  'constitucional': ['constitucionales', 'constitucional'],
+  'federal': ['federales', 'federal'],
+  'estatal': ['estatales', 'estatal'],
+  'municipal': ['municipales', 'municipal']
+};
+
+// Función para expandir sinónimos
+function expandSynonyms(terms: string[]): string[] {
+  const expanded: string[] = [];
+  
+  for (const term of terms) {
+    expanded.push(term);
+    const synonyms = legalSynonyms[term.toLowerCase()];
+    if (synonyms) {
+      expanded.push(...synonyms);
+    }
+  }
+  
+  return [...new Set(expanded)]; // Eliminar duplicados
+}
+
+// Función mejorada de preprocesamiento
+function preprocessQuery(query: string): string {
+  console.log('🔍 Preprocesando query original:', query);
+  
+  // Paso 1: Limpieza básica
+  let processed = query
+    .toLowerCase()
+    .replace(/[¿?¡!.,;:()\[\]{}\-_=+<>"'`~@#$%^&*/\\]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 2);
+  
+  console.log('🔍 Después de limpieza:', processed);
+  
+  // Paso 2: Filtrar stopwords (pero conservar términos legales importantes)
+  const legalTerms = ['artículo', 'ley', 'código', 'reglamento', 'decreto', 'norma', 'cláusula', 'sección', 'capítulo', 'título'];
+  processed = processed.filter(word => 
+    !legalStopwords.includes(word) || legalTerms.includes(word)
+  );
+  
+  console.log('🔍 Después de filtrar stopwords:', processed);
+  
+  // Paso 3: Aplicar stemming
+  const stemmed = processed.map(word => stemSpanishWord(word));
+  console.log('🔍 Después de stemming:', stemmed);
+  
+  // Paso 4: Expandir sinónimos
+  const withSynonyms = expandSynonyms(stemmed);
+  console.log('🔍 Con sinónimos:', withSynonyms);
+  
+  // Paso 5: Construir query para to_tsquery con operadores de proximidad
+  const finalQuery = withSynonyms.join(' & ');
+  
+  console.log('🔍 Query final para to_tsquery:', finalQuery);
+  return finalQuery;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { query, limit = 10 } = await req.json();
@@ -12,36 +117,13 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Lista de palabras vacías/preposiciones comunes en español
-    const stopwords = [
-      'de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'sí', 'porque', 'esta', 'entre', 'cuando', 'muy', 'sin', 'sobre', 'también', 'me', 'hasta', 'hay', 'donde', 'quien', 'desde', 'todo', 'nos', 'durante', 'todos', 'uno', 'les', 'ni', 'contra', 'otros', 'ese', 'eso', 'ante', 'ellos', 'e', 'esto', 'mí', 'antes', 'algunos', 'qué', 'unos', 'yo', 'otro', 'otras', 'otra', 'él', 'tanto', 'esa', 'estos', 'mucho', 'quienes', 'nada', 'muchos', 'cual', 'poco', 'ella', 'estar', 'estas', 'algunas', 'algo', 'nosotros', 'mi', 'mis', 'tú', 'te', 'ti', 'tu', 'tus', 'ellas', 'nosotras', 'vosotros', 'vosotras', 'os', 'mío', 'mía', 'míos', 'mías', 'tuyo', 'tuya', 'tuyos', 'tuyas', 'suyo', 'suya', 'suyos', 'suyas', 'nuestro', 'nuestra', 'nuestros', 'nuestras', 'vuestro', 'vuestra', 'vuestros', 'vuestras', 'esos', 'esas', 'estoy', 'estás', 'está', 'estamos', 'estáis', 'están', 'esté', 'estés', 'estemos', 'estéis', 'estén', 'estaré', 'estarás', 'estará', 'estaremos', 'estaréis', 'estarán', 'estaría', 'estarías', 'estaríamos', 'estaríais', 'estarían', 'estaba', 'estabas', 'estábamos', 'estabais', 'estaban', 'estuve', 'estuviste', 'estuvo', 'estuvimos', 'estuvisteis', 'estuvieron', 'estuviera', 'estuvieras', 'estuviéramos', 'estuvierais', 'estuvieran', 'estuviese', 'estuvieses', 'estuviésemos', 'estuvieseis', 'estuviesen', 'estando', 'estado', 'estada', 'estados', 'estadas', 'estad'];
-
-    // Preprocesar la query para to_tsquery
-    let processedQuery = query
-      .toLowerCase()
-      .replace(/[¿?¡!.,;:()\[\]{}\-_=+<>"'`~@#$%^&*/\\]/g, ' ') // Elimina signos de puntuación
-      .split(/\s+/)
-      .filter((word: string) => word.length > 2 && !stopwords.includes(word)) // Elimina palabras cortas y stopwords
-      .join(' & ');
-
-    if (!processedQuery) {
-      return NextResponse.json({
-        error: 'La consulta no contiene términos relevantes para la búsqueda BM25',
-        success: false
-      }, { status: 400 });
-    }
-
-    console.log('🔍 BM25: Query original:', query);
-    console.log('🔍 BM25: Query procesada para to_tsquery:', processedQuery);
+    // Preprocesar la query (puedes dejar el preprocesamiento si lo deseas, o solo usar la query tal cual)
+    // const processedQuery = preprocessQuery(query);
+    // Para la función básica, solo usamos la query original
+    const processedQuery = query;
 
     const supabase = await createClient();
-    
-    console.log('🔍 BM25: Enviando a función search_chunks_bm25:', {
-      search_query: processedQuery,
-      result_limit: limit
-    });
-    
-    // Usar la función RPC para búsqueda BM25
+    // Llamar a la función básica BM25
     const { data: results, error } = await supabase.rpc('search_chunks_bm25', {
       search_query: processedQuery,
       result_limit: limit
@@ -49,106 +131,32 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('❌ Error en búsqueda BM25:', error);
-      // Fallback: búsqueda simple con ILIKE
-      console.log('🔄 Intentando búsqueda fallback con ILIKE...');
-      // Obtener chunks y luego hacer join manual a documentos
-      const { data: fallbackChunks, error: fallbackError } = await supabase
-        .from('chunks')
-        .select(`
-          chunk_id,
-          chunk_text,
-          char_count,
-          document_id
-        `)
-        .ilike('chunk_text', `%${processedQuery}%`)
-        .limit(limit);
-
-      if (fallbackError) {
-        console.error('❌ Error en fallback BM25:', fallbackError);
-        return NextResponse.json({
-          success: false,
-          error: 'Error en búsqueda BM25 y fallback',
-          details: error.message
-        });
-      }
-
-      console.log('🔍 BM25 Fallback: Chunks encontrados:', fallbackChunks?.length || 0);
-
-      // Obtener los document_id únicos
-      const docIds = (fallbackChunks || []).map((chunk: any) => String(chunk.document_id).trim()).filter(Boolean);
-      let documentsMap: Record<string, any> = {};
-      if (docIds.length > 0) {
-        const { data: docsData } = await supabase
-          .from('documents')
-          .select('*')
-          .in('document_id', docIds);
-        if (docsData) {
-          for (const doc of docsData) {
-            documentsMap[String(doc.document_id).trim()] = doc;
-          }
-        }
-        console.log('🔍 BM25 Fallback: Documentos encontrados:', Object.keys(documentsMap).length);
-      }
-
-      const processedResults = (fallbackChunks || []).map((chunk: any) => {
-        const doc = documentsMap[String(chunk.document_id).trim()] || {};
-        return {
-          chunk_id: chunk.chunk_id,
-          content: chunk.chunk_text,
-          char_count: chunk.char_count,
-          document_id: chunk.document_id,
-          source: doc.source,
-          publication_date: doc.publication_date,
-          last_reform_date: doc.last_reform_date,
-          jurisdiction: doc.jurisdiction,
-          doc_type: doc.doc_type,
-          rank_score: 1.0 // Score fijo para fallback
-        };
-      });
-
-      console.log(`✅ BM25 Fallback: Resultados procesados: ${processedResults.length}`);
-
       return NextResponse.json({
-        success: true,
-        query,
-        results: processedResults,
-        count: processedResults.length,
-        method: 'fallback',
-        timestamp: new Date().toISOString()
+        success: false,
+        error: 'Error en búsqueda BM25',
+        details: error.message
       });
     }
 
-    console.log('🔍 BM25: Resultados de función search_chunks_bm25:', results?.length || 0);
-
-    // Procesar resultados de la función RPC
+    // Procesar resultados
     const processedResults = results?.map((chunk: any) => ({
       chunk_id: chunk.chunk_id,
       content: chunk.chunk_text,
-      start_page: chunk.start_page,
-      end_page: chunk.end_page,
       char_count: chunk.char_count,
       document_id: chunk.document_id,
       source: chunk.source,
-      publication_date: chunk.publication_date,
-      last_reform_date: chunk.last_reform_date,
-      jurisdiction: chunk.jurisdiction,
-      doc_type: chunk.doc_type,
-      section_type: chunk.section_type,
-      section_number: chunk.section_number,
+      article_number: chunk.article_number,
       rank_score: chunk.rank_score
     })) || [];
-
-    console.log(`✅ BM25: Resultados procesados: ${processedResults.length}`);
 
     return NextResponse.json({
       success: true,
       query,
       results: processedResults,
       count: processedResults.length,
-      method: 'fulltext',
+      method: 'bm25_basic',
       timestamp: new Date().toISOString()
     });
-
   } catch (error) {
     console.error('❌ Error general en BM25:', error);
     return NextResponse.json({

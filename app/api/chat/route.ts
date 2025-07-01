@@ -140,7 +140,7 @@ async function searchSimilarDocuments(query: string, supabase: any, limit: numbe
 }
 
 // NUEVA FUNCIÓN: Buscar documentos usando BM25
-async function searchDocumentsBM25(query: string, supabase: any, limit: number = 10): Promise<any[]> {
+async function searchDocumentsBM25(query: string, _supabase: any, limit: number = 10): Promise<any[]> {
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
     // Llamar al endpoint /api/search-bm25 usando fetch con URL absoluta
