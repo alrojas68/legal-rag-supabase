@@ -20,7 +20,7 @@ if (isProduction) {
   
   // Construir URL de conexión directa para Vercel
   const projectId = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
-  const connectionString = `postgresql://postgres:${supabaseServiceKey}@db.${projectId}.supabase.co:5432/postgres`;
+  const connectionString = `postgresql://postgres:${supabaseServiceKey}@${projectId}.supabase.co:5432/postgres`;
 
   console.log('🔗 Conectando a base de datos con Drizzle (PRODUCCIÓN)...');
   console.log('🔗 URL de conexión:', connectionString.substring(0, 50) + '...');
