@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { 
-  searchWithBM25Improved, 
-  searchWithEmbeddings, 
-  searchHybridComplete,
-  saveChatHistory 
-} from '@/lib/db/queries';
+import { createClient } from '@supabase/supabase-js';
 
 // Tipos
 interface Document {
@@ -15,6 +10,7 @@ interface Document {
   content?: string;
   similarity_score?: number;
   chunk_id?: string;
+  article_number?: string;
 }
 
 interface ChatMessage {
@@ -27,7 +23,17 @@ if (!process.env.GOOGLE_API_KEY) {
   throw new Error('GOOGLE_API_KEY no está configurada');
 }
 
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('Variables de entorno de Supabase requeridas');
+}
+
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+// Cliente de Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // Función para obtener embeddings usando Gemini
 async function getEmbeddings(text: string): Promise<number[]> {
@@ -47,88 +53,74 @@ async function getEmbeddings(text: string): Promise<number[]> {
   }
 }
 
-// NUEVA FUNCIÓN: Buscar documentos usando Drizzle BM25
-async function searchDocumentsBM25Drizzle(query: string, limit: number = 10): Promise<any[]> {
+// Función para buscar documentos usando BM25
+async function searchDocumentsBM25(query: string, limit: number = 10): Promise<Document[]> {
   try {
-    console.log('🔍 BM25 Drizzle: Buscando documentos para:', query);
+    console.log('🔍 BM25: Buscando documentos para:', query);
     
-    const results = await searchWithBM25Improved(query, limit, 1.2, 0.75);
-    
-    // Convertir a formato compatible
-    const processedResults = results.map((chunk: any) => ({
-      chunk_id: chunk.chunkId,
-      chunk_text: chunk.chunkText,
-      char_count: chunk.charCount,
-      document_id: chunk.sectionId, // Nota: esto es sectionId
-      source: chunk.legalDocumentName || 'Documento legal',
-      legal_document_name: chunk.legalDocumentName,
-      article_number: chunk.articleNumber,
-      similarity_score: chunk.bm25Score,
-      content: chunk.chunkText
+    const { data, error } = await supabase.rpc('match_documents_bm25', {
+      query_text: query,
+      match_count: limit
+    });
+
+    if (error) {
+      console.error('Error en búsqueda BM25:', error);
+      return [];
+    }
+
+    const processedResults = data.map((chunk: any) => ({
+      chunk_id: chunk.chunk_id,
+      chunk_text: chunk.chunk_text,
+      char_count: chunk.char_count,
+      document_id: chunk.section_id,
+      source: chunk.legal_document_name || 'Documento legal',
+      legal_document_name: chunk.legal_document_name,
+      article_number: chunk.article_number,
+      similarity_score: chunk.bm25_score,
+      content: chunk.chunk_text
     }));
-    
-    console.log(`✅ BM25 Drizzle: ${processedResults.length} resultados encontrados`);
+
+    console.log(`✅ BM25: ${processedResults.length} resultados encontrados`);
     return processedResults;
   } catch (error) {
-    console.error('❌ Error en BM25 Drizzle:', error);
+    console.error('Error en búsqueda BM25:', error);
     return [];
   }
 }
 
-// NUEVA FUNCIÓN: Buscar documentos usando Drizzle Vectorial
-async function searchDocumentsVectorialDrizzle(query: string, limit: number = 10): Promise<any[]> {
+// Función para buscar documentos usando embeddings
+async function searchDocumentsVectorial(query: string, limit: number = 10): Promise<Document[]> {
   try {
-    console.log('🔍 Vectorial Drizzle: Buscando documentos para:', query);
+    console.log('🔍 Vectorial: Buscando documentos para:', query);
     
     const queryEmbedding = await getEmbeddings(query);
-    const results = await searchWithEmbeddings(queryEmbedding, limit);
     
-    // Convertir a formato compatible
-    const processedResults = results.map((chunk: any) => ({
-      chunk_id: chunk.chunkId,
-      chunk_text: chunk.chunkText,
-      char_count: chunk.charCount,
-      document_id: chunk.sectionId, // Nota: esto es sectionId
-      source: chunk.legalDocumentName || 'Documento legal',
-      legal_document_name: chunk.legalDocumentName,
-      article_number: chunk.articleNumber,
-      similarity_score: chunk.similarityScore,
-      content: chunk.chunkText
-    }));
-    
-    console.log(`✅ Vectorial Drizzle: ${processedResults.length} resultados encontrados`);
-    return processedResults;
-  } catch (error) {
-    console.error('❌ Error en Vectorial Drizzle:', error);
-    return [];
-  }
-}
+    const { data, error } = await supabase.rpc('match_documents', {
+      query_embedding: queryEmbedding,
+      match_count: limit
+    });
 
-// NUEVA FUNCIÓN: Búsqueda híbrida con Drizzle
-async function searchDocumentsHybridDrizzle(query: string, limit: number = 10): Promise<any[]> {
-  try {
-    console.log('🔍 Híbrida Drizzle: Buscando documentos para:', query);
-    
-    const queryEmbedding = await getEmbeddings(query);
-    const results = await searchHybridComplete(query, queryEmbedding, 30, limit);
-    
-    // Convertir a formato compatible
-    const processedResults = results.map((chunk: any) => ({
-      chunk_id: chunk.chunkId,
-      chunk_text: chunk.chunkText,
-      char_count: chunk.charCount,
-      document_id: chunk.sectionId, // Nota: esto es sectionId
-      source: chunk.legalDocumentName || 'Documento legal',
-      legal_document_name: chunk.legalDocumentName,
-      article_number: chunk.articleNumber,
-      similarity_score: chunk.combinedScore || chunk.bm25Score,
-      content: chunk.chunkText
+    if (error) {
+      console.error('Error en búsqueda vectorial:', error);
+      return [];
+    }
+
+    const processedResults = data.map((chunk: any) => ({
+      chunk_id: chunk.chunk_id,
+      chunk_text: chunk.chunk_text,
+      char_count: chunk.char_count,
+      document_id: chunk.section_id,
+      source: chunk.legal_document_name || 'Documento legal',
+      legal_document_name: chunk.legal_document_name,
+      article_number: chunk.article_number,
+      similarity_score: chunk.similarity_score,
+      content: chunk.chunk_text
     }));
-    
-    console.log(`✅ Híbrida Drizzle: ${processedResults.length} resultados encontrados`);
+
+    console.log(`✅ Vectorial: ${processedResults.length} resultados encontrados`);
     return processedResults;
   } catch (error) {
-    console.error('❌ Error en Híbrida Drizzle:', error);
+    console.error('Error en búsqueda vectorial:', error);
     return [];
   }
 }
@@ -137,15 +129,6 @@ async function searchDocumentsHybridDrizzle(query: string, limit: number = 10): 
 async function generateResponse(query: string, context: string): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    
-    // DIAGNÓSTICO: Mostrar el contexto completo que se está enviando
-    console.log('🔍 DIAGNÓSTICO: Contexto que se enviará al modelo:');
-    console.log('='.repeat(80));
-    console.log('CONTEXTO COMPLETO:');
-    console.log(context);
-    console.log('='.repeat(80));
-    console.log(`📊 Longitud del contexto: ${context.length} caracteres`);
-    console.log(`📄 Número de documentos en contexto: ${(context.match(/=== .* ===/g) || []).length}`);
     
     const systemPrompt = `Eres un asistente legal especializado en derecho mexicano. 
     
@@ -180,7 +163,7 @@ RESPUESTA:
 }
 
 // Función para extraer artículos referenciados
-function extractReferencedArticles(vectorResults: any[], bm25Results: any[]): any[] {
+function extractReferencedArticles(vectorResults: Document[], bm25Results: Document[]): any[] {
   const articles = new Map<string, any>();
   
   const extractArticlesFromText = (text: string, source: string, method: string, score: number) => {
@@ -201,12 +184,19 @@ function extractReferencedArticles(vectorResults: any[], bm25Results: any[]): an
           
           if (!articles.has(key)) {
             articles.set(key, {
+              source,
               article_number: articleNumber,
-              source: source,
-              method: method,
-              score: score,
-              context: text.substring(Math.max(0, text.indexOf(match) - 100), text.indexOf(match) + 200)
+              methods: [],
+              highest_score: 0
             });
+          }
+          
+          const article = articles.get(key);
+          if (!article.methods.includes(method)) {
+            article.methods.push(method);
+          }
+          if (score > article.highest_score) {
+            article.highest_score = score;
           }
         });
       }
@@ -216,135 +206,124 @@ function extractReferencedArticles(vectorResults: any[], bm25Results: any[]): an
   // Extraer de resultados vectoriales
   vectorResults.forEach(doc => {
     if (doc.content) {
-      extractArticlesFromText(doc.content, doc.source, 'Vectorial', doc.similarity_score);
+      extractArticlesFromText(doc.content, doc.source, 'vectorial', doc.similarity_score || 0);
     }
   });
   
   // Extraer de resultados BM25
   bm25Results.forEach(doc => {
     if (doc.content) {
-      extractArticlesFromText(doc.content, doc.source, 'BM25', doc.similarity_score);
+      extractArticlesFromText(doc.content, doc.source, 'bm25', doc.similarity_score || 0);
     }
   });
   
-  return Array.from(articles.values()).sort((a, b) => b.score - a.score);
+  return Array.from(articles.values());
+}
+
+// Función para guardar historial de chat
+async function saveChatHistory(query: string, response: string, documentsUsed: string[]): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('chat_history')
+      .insert({
+        query,
+        response,
+        documents_used: documentsUsed.join(', '),
+        session_id: 'default-session'
+      });
+
+    if (error) {
+      console.error('Error al guardar historial:', error);
+    } else {
+      console.log('✅ Historial guardado exitosamente');
+    }
+  } catch (error) {
+    console.error('Error al guardar historial:', error);
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, query } = await req.json();
-
-    if (!query) {
+    const { messages } = await req.json();
+    
+    if (!messages || messages.length === 0) {
       return NextResponse.json({
-        error: 'Se requiere una consulta (query)',
+        error: 'Se requieren mensajes',
         success: false
       }, { status: 400 });
     }
 
-    console.log('🚀 Procesando consulta con Drizzle:', query);
+    const lastMessage = messages[messages.length - 1];
+    const query = lastMessage.content;
 
-    // NUEVO: Ejecutar búsquedas con Drizzle en paralelo
-    console.log('🔄 Ejecutando búsquedas con Drizzle...');
-    const [bm25Results, vectorResults, hybridResults] = await Promise.all([
-      searchDocumentsBM25Drizzle(query, 10),
-      searchDocumentsVectorialDrizzle(query, 10),
-      searchDocumentsHybridDrizzle(query, 10)
+    console.log('🚀 Procesando consulta:', query);
+    console.log('🔄 Ejecutando búsquedas...');
+
+    // Ejecutar búsquedas en paralelo
+    const [bm25Results, vectorResults] = await Promise.all([
+      searchDocumentsBM25(query, 10),
+      searchDocumentsVectorial(query, 10)
     ]);
 
-    console.log(`📊 Resultados obtenidos con Drizzle:`);
-    console.log(`   - BM25: ${bm25Results.length} documentos`);
-    console.log(`   - Vectorial: ${vectorResults.length} documentos`);
-    console.log(`   - Híbrida: ${hybridResults.length} documentos`);
+    console.log('📊 Resultados obtenidos:');
+    console.log(`- BM25: ${bm25Results.length} documentos`);
+    console.log(`- Vectorial: ${vectorResults.length} documentos`);
 
-    // Usar resultados híbridos como principales (mejor combinación)
-    let contextDocs = hybridResults;
-    if (hybridResults.length === 0) {
-      // Fallback a BM25 si no hay resultados híbridos
-      contextDocs = bm25Results;
-    }
+    // Combinar y deduplicar resultados
+    const allResults = [...bm25Results, ...vectorResults];
+    const uniqueResults = allResults.filter((result, index, self) => 
+      index === self.findIndex(r => r.chunk_id === result.chunk_id)
+    );
 
-    // Generar respuesta
-    let response = '';
-    if (contextDocs && contextDocs.length > 0) {
-      console.log('🔍 Construyendo contexto con Drizzle...');
-      const context = contextDocs
-        .map((doc: any, idx: number) => {
-          const source = doc.legal_document_name || doc.source || 'Documento legal';
-          const content = doc.chunk_text || doc.content || '';
-          const score = doc.similarity_score?.toFixed(4) || 'N/A';
-          return `=== ${source} (Score: ${score}) ===\n${content}\n=== FIN ${source} ===`;
-        })
-        .join('\n\n');
+    // Ordenar por score
+    uniqueResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
 
-      console.log('📄 Contexto construido con', contextDocs.length, 'documentos');
-      console.log(`📊 Longitud total del contexto: ${context.length} caracteres`);
-
-      response = await generateResponse(query, context);
-    } else {
-      response = 'No encontré información relevante en los documentos legales disponibles para responder tu pregunta. Te sugiero reformular la consulta o consultar directamente con un profesional del derecho.';
-    }
+    // Tomar los mejores resultados
+    const topResults = uniqueResults.slice(0, 15);
 
     // Extraer artículos referenciados
     const referencedArticles = extractReferencedArticles(vectorResults, bm25Results);
     console.log(`📋 Artículos referenciados encontrados: ${referencedArticles.length}`);
 
-    // Guardar historial con Drizzle
-    try {
-      const sessionId = req.headers.get('x-session-id') || 'default-session';
-      const documentsUsed = contextDocs.map((doc: any) => doc.chunk_id);
-      
-      await saveChatHistory(query, response, documentsUsed, sessionId);
-      console.log('✅ Historial guardado con Drizzle');
-    } catch (historyError) {
-      console.warn('Error al guardar historial con Drizzle:', historyError);
+    // Construir contexto
+    let context = '';
+    if (topResults.length > 0) {
+      context = topResults.map((doc, index) => {
+        return `=== ${doc.source}${doc.article_number ? ` - Artículo ${doc.article_number}` : ''} ===\n${doc.content}\n`;
+      }).join('\n');
     }
 
-    // Devolver respuesta con Drizzle
+    // Generar respuesta
+    let response: string;
+    if (context.trim()) {
+      response = await generateResponse(query, context);
+    } else {
+      response = 'No encontré información relevante en los documentos legales disponibles para responder tu pregunta. Te sugiero reformular la consulta o consultar directamente con un profesional del derecho.';
+    }
+
+    // Guardar historial
+    const documentsUsed = topResults.map(doc => doc.source);
+    await saveChatHistory(query, response, documentsUsed);
+
     return NextResponse.json({
       success: true,
-      response: response,
-      query: query,
-      timestamp: new Date().toISOString(),
-      // Resultados de Drizzle
-      drizzle_results: {
-        bm25: {
-          count: bm25Results.length,
-          documents: bm25Results.map((doc: any) => ({
-            chunk_id: doc.chunk_id,
-            source: doc.source,
-            content: doc.content,
-            similarity_score: doc.similarity_score
-          }))
-        },
-        vectorial: {
-          count: vectorResults.length,
-          documents: vectorResults.map((doc: any) => ({
-            chunk_id: doc.chunk_id,
-            source: doc.source,
-            content: doc.content,
-            similarity_score: doc.similarity_score
-          }))
-        },
-        hibrida: {
-          count: hybridResults.length,
-          documents: hybridResults.map((doc: any) => ({
-            chunk_id: doc.chunk_id,
-            source: doc.source,
-            content: doc.content,
-            similarity_score: doc.similarity_score
-          }))
-        }
-      },
-      // Artículos referenciados
-      referenced_articles: referencedArticles
+      response,
+      documents: topResults,
+      referenced_articles: referencedArticles,
+      search_stats: {
+        bm25_results: bm25Results.length,
+        vector_results: vectorResults.length,
+        total_unique: uniqueResults.length,
+        final_results: topResults.length
+      }
     });
 
   } catch (error) {
-    console.error('Error en el endpoint de chat con Drizzle:', error);
+    console.error('Error en endpoint de chat:', error);
     return NextResponse.json({
+      success: false,
       error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : 'Error desconocido',
-      success: false
+      details: error instanceof Error ? error.message : 'Error desconocido'
     }, { status: 500 });
   }
 } 
