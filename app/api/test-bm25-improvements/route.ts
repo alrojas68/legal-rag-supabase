@@ -1,5 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { 
+  searchWithBM25Improved, 
+  searchWithBM25Highlighted, 
+  searchWithBM25Synonyms,
+  searchWithEmbeddings,
+  searchHybridComplete
+} from '@/lib/db/queries';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Configuración de Gemini para embeddings
+if (!process.env.GOOGLE_API_KEY) {
+  throw new Error('GOOGLE_API_KEY no está configurada');
+}
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+// Función para obtener embeddings usando Gemini
+async function getEmbeddings(text: string): Promise<number[]> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+    const result = await model.embedContent(text);
+    const embedding = result.embedding.values;
+    
+    if (!embedding || embedding.length !== 768) {
+      throw new Error('Embedding inválido');
+    }
+    
+    return embedding;
+  } catch (error) {
+    console.error('Error al obtener embeddings:', error);
+    throw error;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,45 +44,17 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    console.log('🧪 Probando mejoras de BM25 con Drizzle...');
     const results: any = {};
 
-    // Caso 1: BM25 original (función anterior)
-    console.log('🧪 Probando BM25 original...');
-    try {
-      const { data: originalResults, error: originalError } = await supabase.rpc('search_chunks_bm25', {
-        search_query: query,
-        result_limit: 5
-      });
-      
-      results.original = {
-        success: !originalError,
-        error: originalError?.message,
-        count: originalResults?.length || 0,
-        results: originalResults || []
-      };
-    } catch (error) {
-      results.original = {
-        success: false,
-        error: error instanceof Error ? error.message : 'Error desconocido',
-        count: 0,
-        results: []
-      };
-    }
-
-    // Caso 2: BM25 mejorado con parámetros por defecto
+    // Caso 1: BM25 mejorado con parámetros por defecto
     console.log('🧪 Probando BM25 mejorado (parámetros por defecto)...');
     try {
-      const { data: improvedResults, error: improvedError } = await supabase.rpc('search_chunks_bm25_improved', {
-        search_query: query,
-        result_limit: 5,
-        k1_param: 1.2,
-        b_param: 0.75
-      });
+      const improvedResults = await searchWithBM25Improved(query, 5, 1.2, 0.75);
       
       results.improved_default = {
-        success: !improvedError,
-        error: improvedError?.message,
+        success: true,
+        error: null,
         count: improvedResults?.length || 0,
         results: improvedResults || []
       };
@@ -63,19 +67,14 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Caso 3: BM25 mejorado con parámetros optimizados para documentos largos
+    // Caso 2: BM25 mejorado con parámetros optimizados para documentos largos
     console.log('🧪 Probando BM25 mejorado (parámetros para documentos largos)...');
     try {
-      const { data: longDocResults, error: longDocError } = await supabase.rpc('search_chunks_bm25_improved', {
-        search_query: query,
-        result_limit: 5,
-        k1_param: 1.5,
-        b_param: 0.5
-      });
+      const longDocResults = await searchWithBM25Improved(query, 5, 1.5, 0.5);
       
       results.improved_long_docs = {
-        success: !longDocError,
-        error: longDocError?.message,
+        success: true,
+        error: null,
         count: longDocResults?.length || 0,
         results: longDocResults || []
       };
@@ -88,19 +87,14 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Caso 4: BM25 mejorado con parámetros para documentos cortos
+    // Caso 3: BM25 mejorado con parámetros para documentos cortos
     console.log('🧪 Probando BM25 mejorado (parámetros para documentos cortos)...');
     try {
-      const { data: shortDocResults, error: shortDocError } = await supabase.rpc('search_chunks_bm25_improved', {
-        search_query: query,
-        result_limit: 5,
-        k1_param: 1.0,
-        b_param: 0.8
-      });
+      const shortDocResults = await searchWithBM25Improved(query, 5, 1.0, 0.8);
       
       results.improved_short_docs = {
-        success: !shortDocError,
-        error: shortDocError?.message,
+        success: true,
+        error: null,
         count: shortDocResults?.length || 0,
         results: shortDocResults || []
       };
@@ -113,17 +107,14 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Caso 5: Búsqueda con sinónimos
+    // Caso 4: Búsqueda con sinónimos
     console.log('🧪 Probando búsqueda con sinónimos...');
     try {
-      const { data: synonymResults, error: synonymError } = await supabase.rpc('search_chunks_with_synonyms', {
-        search_query: query,
-        result_limit: 5
-      });
+      const synonymResults = await searchWithBM25Synonyms(query, 5);
       
       results.with_synonyms = {
-        success: !synonymError,
-        error: synonymError?.message,
+        success: true,
+        error: null,
         count: synonymResults?.length || 0,
         results: synonymResults || []
       };
@@ -136,33 +127,61 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Caso 6: Búsqueda de texto completo nativa de PostgreSQL
-    console.log('🧪 Probando búsqueda de texto completo nativa...');
+    // Caso 5: Búsqueda con resaltado
+    console.log('🧪 Probando búsqueda con resaltado...');
     try {
-      const { data: nativeResults, error: nativeError } = await supabase
-        .from('chunks')
-        .select(`
-          chunk_id,
-          chunk_text,
-          char_count,
-          document_id,
-          ts_rank(chunk_text_tsv, to_tsquery('spanish', $1)) as rank_score
-        `)
-        .textSearch('chunk_text', query, {
-          type: 'plain',
-          config: 'spanish'
-        })
-        .order('rank_score', { ascending: false })
-        .limit(5);
-
-      results.native_fulltext = {
-        success: !nativeError,
-        error: nativeError?.message,
-        count: nativeResults?.length || 0,
-        results: nativeResults || []
+      const highlightedResults = await searchWithBM25Highlighted(query, 5);
+      
+      results.with_highlighting = {
+        success: true,
+        error: null,
+        count: highlightedResults?.length || 0,
+        results: highlightedResults || []
       };
     } catch (error) {
-      results.native_fulltext = {
+      results.with_highlighting = {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error desconocido',
+        count: 0,
+        results: []
+      };
+    }
+
+    // Caso 6: Búsqueda vectorial
+    console.log('🧪 Probando búsqueda vectorial...');
+    try {
+      const queryEmbedding = await getEmbeddings(query);
+      const vectorResults = await searchWithEmbeddings(queryEmbedding, 5);
+      
+      results.vector_search = {
+        success: true,
+        error: null,
+        count: vectorResults?.length || 0,
+        results: vectorResults || []
+      };
+    } catch (error) {
+      results.vector_search = {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error desconocido',
+        count: 0,
+        results: []
+      };
+    }
+
+    // Caso 7: Búsqueda híbrida completa
+    console.log('🧪 Probando búsqueda híbrida completa...');
+    try {
+      const queryEmbedding = await getEmbeddings(query);
+      const hybridResults = await searchHybridComplete(query, queryEmbedding, 30, 5);
+      
+      results.hybrid_complete = {
+        success: true,
+        error: null,
+        count: hybridResults?.length || 0,
+        results: hybridResults || []
+      };
+    } catch (error) {
+      results.hybrid_complete = {
         success: false,
         error: error instanceof Error ? error.message : 'Error desconocido',
         count: 0,
@@ -194,7 +213,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error en pruebas de BM25:', error);
+    console.error('❌ Error en pruebas de BM25 con Drizzle:', error);
     return NextResponse.json({
       success: false,
       error: 'Error general en pruebas de BM25',

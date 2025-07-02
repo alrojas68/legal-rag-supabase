@@ -2,41 +2,64 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
-// Configuración de la conexión
-let connectionString = process.env.DATABASE_URL;
+// Solo usar Drizzle en producción (Vercel)
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Si no hay DATABASE_URL, construir desde variables de Supabase
-if (!connectionString) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+let db: any;
+let postgresClient: any;
+let closeConnection: () => Promise<void>;
+
+if (isProduction) {
+  // En producción (Vercel), usar Drizzle con conexión directa a Supabase
+  let connectionString = process.env.DATABASE_URL;
   
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('DATABASE_URL o NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY deben estar configurados');
+  if (!connectionString) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Variables de entorno de Supabase requeridas en producción');
+    }
+    
+    // Construir URL de conexión directa para Vercel
+    const projectId = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
+    connectionString = `postgresql://postgres:${supabaseServiceKey}@db.${projectId}.supabase.co:5432/postgres`;
   }
+
+  console.log('🔗 Conectando a base de datos con Drizzle (PRODUCCIÓN)...');
+  console.log('🔗 URL de conexión:', connectionString?.substring(0, 50) + '...');
+
+  // Crear cliente de postgres para producción
+  postgresClient = postgres(connectionString, {
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    ssl: 'require',
+  });
+
+  // Crear instancia de Drizzle para producción
+  db = drizzle(postgresClient, { schema });
+
+  // Función para cerrar la conexión
+  closeConnection = async () => {
+    await postgresClient.end();
+  };
+} else {
+  // En desarrollo, exportar un mock de Drizzle que usa Supabase directo
+  console.log('🔗 Usando Supabase directo en desarrollo (Drizzle deshabilitado)');
   
-  // Construir URL de conexión directa a PostgreSQL
-  // Cambiar https:// por postgresql:// y agregar credenciales
-  const dbUrl = supabaseUrl.replace('https://', 'postgresql://postgres:');
-  connectionString = `${dbUrl}@${supabaseUrl.replace('https://', '').replace('.supabase.co', '.supabase.co:5432')}/postgres`;
+  // Mock de Drizzle para desarrollo
+  db = {
+    execute: async (query: string, params?: any[]) => {
+      console.warn('⚠️ Drizzle no disponible en desarrollo. Usa Supabase directo.');
+      throw new Error('Drizzle no disponible en desarrollo. Usa Supabase directo.');
+    }
+  };
+  
+  postgresClient = null;
+  closeConnection = async () => {
+    // No hacer nada en desarrollo
+  };
 }
 
-console.log('🔗 Conectando a base de datos con Drizzle...');
-
-// Crear cliente de postgres
-const client = postgres(connectionString, {
-  max: 10, // Máximo de conexiones
-  idle_timeout: 20, // Tiempo de inactividad
-  connect_timeout: 10, // Tiempo de conexión
-  ssl: 'require', // Requerir SSL para Supabase
-});
-
-// Crear instancia de Drizzle
-export const db = drizzle(client, { schema });
-
-// Exportar el cliente para uso directo si es necesario
-export { client as postgresClient };
-
-// Función para cerrar la conexión (útil para tests)
-export async function closeConnection() {
-  await client.end();
-} 
+export { db, postgresClient, closeConnection }; 

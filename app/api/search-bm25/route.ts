@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { searchWithBM25Improved, searchWithBM25Highlighted, searchWithBM25Synonyms } from '@/lib/db/queries';
 
 // Función para stemming básico en español (simplificada)
 function stemSpanishWord(word: string): string {
@@ -108,7 +108,7 @@ function preprocessQuery(query: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, limit = 10 } = await req.json();
+    const { query, limit = 10, method = 'improved' } = await req.json();
 
     if (!query) {
       return NextResponse.json({
@@ -117,48 +117,46 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Preprocesar la query (puedes dejar el preprocesamiento si lo deseas, o solo usar la query tal cual)
-    // const processedQuery = preprocessQuery(query);
-    // Para la función básica, solo usamos la query original
-    const processedQuery = query;
+    console.log(`🔍 Endpoint /api/search-bm25: Búsqueda ${method} para "${query}"`);
 
-    const supabase = await createClient();
-    // Llamar a la función básica BM25
-    const { data: results, error } = await supabase.rpc('search_chunks_bm25', {
-      search_query: processedQuery,
-      result_limit: limit
-    });
+    let results: any[] = [];
 
-    if (error) {
-      console.error('❌ Error en búsqueda BM25:', error);
-      return NextResponse.json({
-        success: false,
-        error: 'Error en búsqueda BM25',
-        details: error.message
-      });
+    // Seleccionar método de búsqueda
+    switch (method) {
+      case 'highlighted':
+        results = await searchWithBM25Highlighted(query, limit);
+        break;
+      case 'synonyms':
+        results = await searchWithBM25Synonyms(query, limit);
+        break;
+      case 'improved':
+      default:
+        results = await searchWithBM25Improved(query, limit);
+        break;
     }
 
-    // Procesar resultados
-    const processedResults = results?.map((chunk: any) => ({
-      chunk_id: chunk.chunk_id,
-      content: chunk.chunk_text,
-      char_count: chunk.char_count,
-      document_id: chunk.document_id,
-      source: chunk.source,
-      article_number: chunk.article_number,
-      rank_score: chunk.rank_score
-    })) || [];
+    // Procesar resultados para mantener compatibilidad
+    const processedResults = results.map((chunk: any) => ({
+      chunk_id: chunk.chunkId,
+      content: chunk.chunkText,
+      char_count: chunk.charCount,
+      document_id: chunk.sectionId, // Nota: esto es sectionId, no documentId directo
+      source: chunk.legalDocumentName || 'Documento legal',
+      article_number: chunk.articleNumber,
+      rank_score: chunk.bm25Score,
+      highlighted_text: chunk.highlightedText
+    }));
 
     return NextResponse.json({
       success: true,
       query,
       results: processedResults,
       count: processedResults.length,
-      method: 'bm25_basic',
+      method: method,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ Error general en BM25:', error);
+    console.error('❌ Error general en BM25 con Drizzle:', error);
     return NextResponse.json({
       success: false,
       error: 'Error general al realizar búsqueda BM25',
@@ -172,6 +170,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query = searchParams.get('q');
   const limit = parseInt(searchParams.get('limit') || '10');
+  const method = searchParams.get('method') || 'improved';
 
   if (!query) {
     return NextResponse.json({
@@ -182,7 +181,7 @@ export async function GET(req: NextRequest) {
 
   // Reutilizar la lógica del POST
   const mockReq = {
-    json: async () => ({ query, limit })
+    json: async () => ({ query, limit, method })
   } as NextRequest;
 
   return POST(mockReq);
