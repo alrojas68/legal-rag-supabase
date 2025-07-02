@@ -11,23 +11,19 @@ let closeConnection: () => Promise<void>;
 
 if (isProduction) {
   // En producción (Vercel), usar Drizzle con conexión directa a Supabase
-  let connectionString = process.env.DATABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
-  if (!connectionString) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Variables de entorno de Supabase requeridas en producción');
-    }
-    
-    // Construir URL de conexión directa para Vercel
-    const projectId = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
-    connectionString = `postgresql://postgres:${supabaseServiceKey}@db.${projectId}.supabase.co:5432/postgres`;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Variables de entorno de Supabase requeridas en producción');
   }
+  
+  // Construir URL de conexión directa para Vercel
+  const projectId = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
+  const connectionString = `postgresql://postgres:${supabaseServiceKey}@db.${projectId}.supabase.co:5432/postgres`;
 
   console.log('🔗 Conectando a base de datos con Drizzle (PRODUCCIÓN)...');
-  console.log('🔗 URL de conexión:', connectionString?.substring(0, 50) + '...');
+  console.log('🔗 URL de conexión:', connectionString.substring(0, 50) + '...');
 
   // Crear cliente de postgres para producción
   postgresClient = postgres(connectionString, {
