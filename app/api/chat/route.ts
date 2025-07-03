@@ -58,7 +58,7 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
     
-    const { data, error } = await supabase.rpc('search_chunks_bm25_improved', {
+    const { data, error } = await supabase.rpc('search_chunks_bm25', {
       search_query: query,
       result_limit: limit
     });
@@ -67,6 +67,11 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
       console.error('Error en búsqueda BM25:', error);
       return [];
     }
+
+    console.log('🔍 BM25: Datos crudos recibidos:', {
+      count: data?.length || 0,
+      sample: data?.[0] || null
+    });
 
     const processedResults = data.map((chunk: any) => ({
       chunk_id: chunk.chunk_id,
@@ -81,6 +86,7 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
     }));
 
     console.log(`✅ BM25: ${processedResults.length} resultados encontrados`);
+    console.log('🔍 BM25: Primer resultado procesado:', processedResults[0] || null);
     return processedResults;
   } catch (error) {
     console.error('Error en búsqueda BM25:', error);
@@ -266,27 +272,22 @@ export async function POST(req: NextRequest) {
     console.log('🚀 Procesando consulta:', finalQuery);
     console.log('🔄 Ejecutando búsquedas...');
 
-    // Ejecutar búsquedas en paralelo
-    const [bm25Results, vectorResults] = await Promise.all([
-      searchDocumentsBM25(finalQuery, 10),
-      searchDocumentsVectorial(finalQuery, 10)
-    ]);
+    // Ejecutar búsquedas secuencialmente para debug
+    console.log('🔍 Ejecutando BM25...');
+    const bm25Results = await searchDocumentsBM25(finalQuery, 10);
+    console.log('🔍 Ejecutando Vectorial...');
+    const vectorResults = await searchDocumentsVectorial(finalQuery, 10);
 
     console.log('📊 Resultados obtenidos:');
     console.log(`- BM25: ${bm25Results.length} documentos`);
     console.log(`- Vectorial: ${vectorResults.length} documentos`);
 
-    // Combinar y deduplicar resultados
+    // Mezclar ambos resultados (sin deduplicar)
     const allResults = [...bm25Results, ...vectorResults];
-    const uniqueResults = allResults.filter((result, index, self) => 
-      index === self.findIndex(r => r.chunk_id === result.chunk_id)
-    );
-
-    // Ordenar por score
-    uniqueResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
-
-    // Tomar los mejores resultados
-    const topResults = uniqueResults.slice(0, 15);
+    // Ordenar por score descendente (puedes ajustar el criterio si quieres)
+    allResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
+    // Tomar los mejores 15
+    const topResults = allResults.slice(0, 15);
 
     // Extraer artículos referenciados
     const referencedArticles = extractReferencedArticles(vectorResults, bm25Results);
@@ -315,12 +316,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       response,
-      documents: topResults,
+      bm25_results: bm25Results,
+      vectorial_results: vectorResults,
+      mixed_context: topResults,
       referenced_articles: referencedArticles,
       search_stats: {
         bm25_results: bm25Results.length,
         vector_results: vectorResults.length,
-        total_unique: uniqueResults.length,
         final_results: topResults.length
       }
     });
