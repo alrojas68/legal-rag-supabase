@@ -58,7 +58,7 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
     
-    const { data, error } = await supabase.rpc('match_documents_bm25', {
+    const { data, error } = await supabase.rpc('match_documents', {
       query_text: query,
       match_count: limit
     });
@@ -228,7 +228,7 @@ async function saveChatHistory(query: string, response: string, documentsUsed: s
       .insert({
         query,
         response,
-        documents_used: documentsUsed.join(', '),
+        documents_used: documentsUsed.length > 0 ? documentsUsed.join(', ') : '',
         session_id: 'default-session'
       });
 
@@ -244,25 +244,29 @@ async function saveChatHistory(query: string, response: string, documentsUsed: s
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json();
+    const body = await req.json();
+    const { messages, query } = body;
     
-    if (!messages || messages.length === 0) {
+    // Aceptar tanto el formato nuevo (messages) como el antiguo (query)
+    let finalQuery: string;
+    if (query) {
+      finalQuery = query;
+    } else if (messages && messages.length > 0) {
+      finalQuery = messages[messages.length - 1].content;
+    } else {
       return NextResponse.json({
-        error: 'Se requieren mensajes',
+        error: 'Se requiere una consulta (query) o mensajes',
         success: false
       }, { status: 400 });
     }
 
-    const lastMessage = messages[messages.length - 1];
-    const query = lastMessage.content;
-
-    console.log('🚀 Procesando consulta:', query);
+    console.log('🚀 Procesando consulta:', finalQuery);
     console.log('🔄 Ejecutando búsquedas...');
 
     // Ejecutar búsquedas en paralelo
     const [bm25Results, vectorResults] = await Promise.all([
-      searchDocumentsBM25(query, 10),
-      searchDocumentsVectorial(query, 10)
+      searchDocumentsBM25(finalQuery, 10),
+      searchDocumentsVectorial(finalQuery, 10)
     ]);
 
     console.log('📊 Resultados obtenidos:');
