@@ -7,6 +7,7 @@ import {
   searchHybridComplete
 } from '@/lib/db/queries';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
 
 // Configuración de Gemini para embeddings
 if (!process.env.GOOGLE_API_KEY) {

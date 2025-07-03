@@ -58,9 +58,9 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
   try {
     console.log('🔍 BM25: Buscando documentos para:', query);
     
-    const { data, error } = await supabase.rpc('match_documents', {
-      query_text: query,
-      match_count: limit
+    const { data, error } = await supabase.rpc('search_chunks_bm25_improved', {
+      search_query: query,
+      result_limit: limit
     });
 
     if (error) {
@@ -72,11 +72,11 @@ async function searchDocumentsBM25(query: string, limit: number = 10): Promise<D
       chunk_id: chunk.chunk_id,
       chunk_text: chunk.chunk_text,
       char_count: chunk.char_count,
-      document_id: chunk.section_id,
-      source: chunk.legal_document_name || 'Documento legal',
-      legal_document_name: chunk.legal_document_name,
+      document_id: chunk.document_id,
+      source: chunk.source || 'Documento legal',
+      legal_document_name: chunk.source,
       article_number: chunk.article_number,
-      similarity_score: chunk.bm25_score,
+      similarity_score: chunk.rank_score,
       content: chunk.chunk_text
     }));
 
@@ -223,12 +223,15 @@ function extractReferencedArticles(vectorResults: Document[], bm25Results: Docum
 // Función para guardar historial de chat
 async function saveChatHistory(query: string, response: string, documentsUsed: string[]): Promise<void> {
   try {
+    // Convertir nombres de documentos a UUIDs (usar un UUID por defecto si no tenemos el real)
+    const documentIds = documentsUsed.length > 0 ? ['00000000-0000-0000-0000-000000000000'] : [];
+    
     const { error } = await supabase
       .from('chat_history')
       .insert({
         query,
         response,
-        documents_used: documentsUsed.length > 0 ? documentsUsed.join(', ') : '',
+        documents_used: documentIds,
         session_id: 'default-session'
       });
 
