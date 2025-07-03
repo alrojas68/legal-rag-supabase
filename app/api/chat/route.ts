@@ -113,14 +113,14 @@ async function searchDocumentsVectorial(query: string, limit: number = 10): Prom
 
     const processedResults = data.map((chunk: any) => ({
       chunk_id: chunk.chunk_id,
-      chunk_text: chunk.chunk_text,
-      char_count: chunk.char_count,
-      document_id: chunk.section_id,
+      chunk_text: chunk.content, // Usar content que viene de la función match_documents
+      char_count: chunk.char_count || 0,
+      document_id: chunk.document_id,
       source: chunk.legal_document_name || 'Documento legal',
       legal_document_name: chunk.legal_document_name,
       article_number: chunk.article_number,
       similarity_score: chunk.similarity_score,
-      content: chunk.chunk_text
+      content: chunk.content // Usar content que viene de la función match_documents
     }));
 
     console.log(`✅ Vectorial: ${processedResults.length} resultados encontrados`);
@@ -136,26 +136,7 @@ async function generateResponse(query: string, context: string): Promise<string>
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
-    const systemPrompt = `Eres un asistente legal especializado en derecho mexicano. 
-    
-Tu tarea es responder preguntas legales usando ÚNICAMENTE la información proporcionada en el contexto. 
-
-INSTRUCCIONES IMPORTANTES:
-1. Usa SOLO la información del contexto para responder
-2. Si el contexto no contiene información relevante para la pregunta, indícalo claramente
-3. Cita artículos específicos cuando sea posible
-4. Mantén un tono profesional y técnico
-5. Organiza tu respuesta de manera clara y estructurada
-6. NO inventes información que no esté en el contexto
-
-CONTEXTO LEGAL:
-${context}
-
-PREGUNTA DEL USUARIO:
-${query}
-
-RESPUESTA:
-`;
+    const systemPrompt = `Eres un asistente legal especializado en derecho mexicano.\n\nTu tarea es responder preguntas legales usando ÚNICAMENTE la información proporcionada en el contexto.\n\nINSTRUCCIONES IMPORTANTES:\n1. Usa SOLO la información del contexto para responder\n2. Si el contexto no contiene información relevante para la pregunta, indícalo claramente\n3. Cita SIEMPRE el nombre del documento y el número de artículo de donde proviene la información (por ejemplo: 'según el Artículo 6 de la Ley de Sociedad de Convivencia para la Ciudad de México')\n4. Mantén un tono profesional y técnico\n5. Organiza tu respuesta de manera clara y estructurada\n6. NO inventes información que no esté en el contexto\n\nCONTEXTO LEGAL:\n${context}\n\nPREGUNTA DEL USUARIO:\n${query}\n\nRESPUESTA:\n`;
 
     const result = await model.generateContent(systemPrompt);
     const response = result.response.text();
@@ -282,6 +263,10 @@ export async function POST(req: NextRequest) {
     console.log(`- BM25: ${bm25Results.length} documentos`);
     console.log(`- Vectorial: ${vectorResults.length} documentos`);
 
+    // Extraer artículos referenciados por método
+    const referencedArticles = extractReferencedArticles(vectorResults, bm25Results);
+    console.log(`📋 Artículos referenciados encontrados: ${referencedArticles.length}`);
+
     // Mezclar ambos resultados (sin deduplicar)
     const allResults = [...bm25Results, ...vectorResults];
     // Ordenar por score descendente (puedes ajustar el criterio si quieres)
@@ -289,37 +274,62 @@ export async function POST(req: NextRequest) {
     // Tomar los mejores 15
     const topResults = allResults.slice(0, 15);
 
-    // Extraer artículos referenciados
-    const referencedArticles = extractReferencedArticles(vectorResults, bm25Results);
-    console.log(`📋 Artículos referenciados encontrados: ${referencedArticles.length}`);
+    // Construir contextos separados
+    const contextVectorial = vectorResults.map(doc => `=== Documento: ${doc.source}${doc.article_number ? ` | Artículo: ${doc.article_number}` : ''} ===\n${doc.content}\n`).join('\n');
+    const contextBM25 = bm25Results.map(doc => `=== Documento: ${doc.source}${doc.article_number ? ` | Artículo: ${doc.article_number}` : ''} ===\n${doc.content}\n`).join('\n');
+    const contextCombined = topResults.map(doc => `=== Documento: ${doc.source}${doc.article_number ? ` | Artículo: ${doc.article_number}` : ''} ===\n${doc.content}\n`).join('\n');
 
-    // Construir contexto
-    let context = '';
-    if (topResults.length > 0) {
-      context = topResults.map((doc, index) => {
-        return `=== ${doc.source}${doc.article_number ? ` - Artículo ${doc.article_number}` : ''} ===\n${doc.content}\n`;
-      }).join('\n');
-    }
-
-    // Generar respuesta
-    let response: string;
-    if (context.trim()) {
-      response = await generateResponse(query, context);
+    // Generar respuestas por separado
+    let responseVectorial = '';
+    let responseBM25 = '';
+    let responseCombined = '';
+    if (contextVectorial.trim()) {
+      responseVectorial = await generateResponse(finalQuery, contextVectorial);
     } else {
-      response = 'No encontré información relevante en los documentos legales disponibles para responder tu pregunta. Te sugiero reformular la consulta o consultar directamente con un profesional del derecho.';
+      responseVectorial = 'No se encontró información relevante en la búsqueda vectorial.';
+    }
+    if (contextBM25.trim()) {
+      responseBM25 = await generateResponse(finalQuery, contextBM25);
+    } else {
+      responseBM25 = 'No se encontró información relevante en la búsqueda BM25.';
+    }
+    if (contextCombined.trim()) {
+      responseCombined = await generateResponse(finalQuery, contextCombined);
+    } else {
+      responseCombined = 'No se encontró información relevante en la búsqueda combinada.';
     }
 
-    // Guardar historial
+    // Agrupar artículos referenciados
+    const articlesVectorial = extractReferencedArticles(vectorResults, []);
+    const articlesBM25 = extractReferencedArticles([], bm25Results);
+    // Map para fácil búsqueda
+    const key = (a: any) => `${a.source}||${a.article_number}`;
+    const setVectorial = new Set(articlesVectorial.map(key));
+    const setBM25 = new Set(articlesBM25.map(key));
+    // En ambos métodos
+    const articlesBoth = articlesVectorial.filter(a => setBM25.has(key(a)));
+    // Solo vectorial
+    const articlesOnlyVectorial = articlesVectorial.filter(a => !setBM25.has(key(a)));
+    // Solo BM25
+    const articlesOnlyBM25 = articlesBM25.filter(a => !setVectorial.has(key(a)));
+
+    // Guardar historial solo de la respuesta combinada
     const documentsUsed = topResults.map(doc => doc.source);
-    await saveChatHistory(query, response, documentsUsed);
+    await saveChatHistory(finalQuery, responseCombined, documentsUsed);
 
     return NextResponse.json({
       success: true,
-      response,
+      response_vectorial: responseVectorial,
+      response_bm25: responseBM25,
+      response_combined: responseCombined,
       bm25_results: bm25Results,
       vectorial_results: vectorResults,
       mixed_context: topResults,
-      referenced_articles: referencedArticles,
+      referenced_articles: {
+        both: articlesBoth,
+        only_vectorial: articlesOnlyVectorial,
+        only_bm25: articlesOnlyBM25
+      },
       search_stats: {
         bm25_results: bm25Results.length,
         vector_results: vectorResults.length,

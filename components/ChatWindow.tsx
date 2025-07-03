@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Search, FileText } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { VoiceInputV2 } from './ui/voice-input-v2';
 import { VoiceHelp } from './ui/voice-help';
@@ -8,35 +8,18 @@ import Link from 'next/link';
 interface Message {
   role: string;
   content: string;
-  combined_response?: string;
-  comparison?: {
-    vector_results: {
-      count: number;
-      documents: Array<{
-        chunk_id: string;
-        document_id: string;
-        source: string;
-        content: string;
-        similarity_score: number;
-      }>;
-    };
-    bm25_results: {
-      count: number;
-      documents: Array<{
-        chunk_id: string;
-        document_id: string;
-        source: string;
-        content: string;
-        rank_score: number;
-      }>;
-    };
-  };
-  referenced_articles?: Array<{
-    document: string;
-    article: string;
-    methods: string[];
-    scores: number[];
-  }>;
+  vectorial_response?: any[];
+  referenced_articles_by_method?: any[];
+  llm_response?: string;
+  referenced_articles_combined?: any[];
+  bm25_results?: any[];
+  vectorial_results?: any[];
+  mixed_context?: any[];
+  search_stats?: any;
+  response_vectorial?: string;
+  response_bm25?: string;
+  response_combined?: string;
+  referenced_articles?: any;
 }
 
 const ChatWindow = () => {
@@ -113,9 +96,18 @@ const ChatWindow = () => {
       if (data.success) {
         const assistantMessage: Message = { 
           role: 'assistant', 
-          content: data.response,
-          combined_response: data.combined_response,
-          comparison: data.comparison,
+          content: data.llm_response || data.response,
+          vectorial_response: data.vectorial_response,
+          referenced_articles_by_method: data.referenced_articles_by_method,
+          llm_response: data.llm_response,
+          referenced_articles_combined: data.referenced_articles_combined,
+          bm25_results: data.bm25_results,
+          vectorial_results: data.vectorial_results,
+          mixed_context: data.mixed_context,
+          search_stats: data.search_stats,
+          response_vectorial: data.response_vectorial,
+          response_bm25: data.response_bm25,
+          response_combined: data.response_combined,
           referenced_articles: data.referenced_articles
         };
         setMessages([...newMessages, assistantMessage]);
@@ -138,84 +130,6 @@ const ChatWindow = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     handleSendMessage();
-  };
-
-  // Componente para mostrar resultados de búsqueda
-  const SearchResults = ({ 
-    title, 
-    results, 
-    scoreField, 
-    scoreLabel, 
-    icon 
-  }: { 
-    title: string; 
-    results: any; 
-    scoreField: string; 
-    scoreLabel: string; 
-    icon: React.ReactNode;
-  }) => {
-    if (!results || results.count === 0) {
-      return (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-2 mb-2">
-            {icon}
-            <h4 className="font-semibold text-gray-700 dark:text-gray-300">{title}</h4>
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">No se encontraron resultados</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center space-x-2 mb-3">
-          {icon}
-          <h4 className="font-semibold text-gray-700 dark:text-gray-300">
-            {title} ({results.count} resultados)
-          </h4>
-        </div>
-        <div className="space-y-3 max-h-60 overflow-y-auto">
-          {results.documents.slice(0, 5).map((doc: any, idx: number) => {
-            const articles = extractArticles(doc.content);
-            return (
-              <div key={idx} className="bg-white dark:bg-gray-700 rounded p-3 border border-gray-200 dark:border-gray-600">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                    {doc.source}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {scoreLabel}: {doc[scoreField]?.toFixed(4)}
-                  </span>
-                </div>
-                <div 
-                  className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
-                  dangerouslySetInnerHTML={{ 
-                    __html: highlightArticles(doc.content.substring(0, 300) + (doc.content.length > 300 ? '...' : ''))
-                  }}
-                />
-                {articles.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {articles.slice(0, 3).map((article, articleIdx) => (
-                      <span 
-                        key={articleIdx}
-                        className="text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 px-2 py-1 rounded-full"
-                      >
-                        {article}
-                      </span>
-                    ))}
-                    {articles.length > 3 && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        +{articles.length - 3} más
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -280,129 +194,361 @@ const ChatWindow = () => {
               }`}>
                 <p className="text-base whitespace-pre-wrap">{message.content}</p>
                 
-                {/* Mostrar comparación de resultados si existe */}
-                {message.role === 'assistant' && message.comparison && (
-                  <div className="mt-4 space-y-4">
+                {/* 3. Respuesta del LLM */}
+                {message.role === 'assistant' && message.llm_response && (
+                  <div className="mb-4">
                     <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
                       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                        <Search className="w-4 h-4 mr-2" />
-                        Comparación de Métodos de Búsqueda
+                        <Bot className="w-4 h-4 mr-2" />
+                        Respuesta del Asistente Legal
                       </h3>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <SearchResults
-                          title="Búsqueda Vectorial (Semántica)"
-                          results={message.comparison.vector_results}
-                          scoreField="similarity_score"
-                          scoreLabel="Similitud"
-                          icon={<div className="w-4 h-4 bg-blue-500 rounded-full" />}
-                        />
-                        <SearchResults
-                          title="Búsqueda BM25 (Texto Completo)"
-                          results={message.comparison.bm25_results}
-                          scoreField="rank_score"
-                          scoreLabel="Ranking"
-                          icon={<div className="w-4 h-4 bg-green-500 rounded-full" />}
-                        />
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {message.llm_response}
+                        </p>
                       </div>
                     </div>
-                    
-                    {/* NUEVO: Mostrar respuesta combinada */}
-                    {message.combined_response && (
-                      <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                          <div className="w-4 h-4 bg-purple-500 rounded-full mr-2" />
-                          Respuesta Combinada (Vectorial + BM25)
-                        </h3>
-                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
-                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                            {message.combined_response}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Artículos referenciados al final */}
-                    {message.referenced_articles && message.referenced_articles.length > 0 && (
-                      <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                          <FileText className="w-4 h-4 mr-2" />
-                          Artículos Referenciados ({message.referenced_articles.length})
-                        </h3>
-                        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
-                          <div className="space-y-3">
-                            {message.referenced_articles.map((article, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600 shadow-sm">
-                                <div className="flex-1">
-                                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                                    Artículo {article.article}
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                    {article.document}
-                                  </div>
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                  <div className="flex space-x-1">
-                                    {article.methods.includes('Vectorial') && (
-                                      <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
-                                        Vectorial
-                                      </span>
-                                    )}
-                                    {article.methods.includes('BM25') && (
-                                      <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium">
-                                        BM25
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                    Score: {Math.max(...article.scores).toFixed(3)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
-                
-                {/* Mostrar artículos referenciados también cuando NO hay comparación */}
-                {message.role === 'assistant' && message.referenced_articles && message.referenced_articles.length > 0 && !message.comparison && (
+
+                {/* 2. Artículos Referenciados por Método */}
+                {message.role === 'assistant' && message.referenced_articles_by_method && message.referenced_articles_by_method.length > 0 && (
                   <div className="mt-4">
                     <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
                       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
                         <FileText className="w-4 h-4 mr-2" />
-                        Artículos Referenciados ({message.referenced_articles.length})
+                        Artículos Referenciados por Método ({message.referenced_articles_by_method.length})
                       </h3>
                       <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
                         <div className="space-y-3">
-                          {message.referenced_articles.map((article, index) => (
+                          {message.referenced_articles_by_method.map((article, index) => (
                             <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600 shadow-sm">
                               <div className="flex-1">
                                 <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                                  Artículo {article.article}
+                                  Artículo {article.article_number}
                                 </div>
                                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                  {article.document}
+                                  {article.source}
                                 </div>
                               </div>
                               <div className="flex items-center space-x-3">
                                 <div className="flex space-x-1">
-                                  {article.methods.includes('Vectorial') && (
+                                  {article.methods.includes('vectorial') && (
                                     <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
                                       Vectorial
                                     </span>
                                   )}
-                                  {article.methods.includes('BM25') && (
+                                  {article.methods.includes('bm25') && (
                                     <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium">
                                       BM25
                                     </span>
                                   )}
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                  Score: {Math.max(...article.scores).toFixed(3)}
+                                  Score: {article.highest_score?.toFixed(3)}
                                 </div>
                               </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1. Respuesta Vectorial */}
+                {message.role === 'assistant' && message.vectorial_response && message.vectorial_response.length > 0 && (
+                  <div className="mt-4">
+                    <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                        <div className="w-4 h-4 bg-blue-500 rounded-full mr-2" />
+                        Respuesta Vectorial (Semántica)
+                      </h3>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {message.vectorial_response.slice(0, 3).map((doc: any, idx: number) => {
+                            const articles = extractArticles(doc.content);
+                            return (
+                              <div key={idx} className="bg-white dark:bg-gray-700 rounded p-3 border border-blue-200 dark:border-blue-600">
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                                    {doc.source}
+                                  </span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Similitud: {doc.similarity_score?.toFixed(4)}
+                                  </span>
+                                </div>
+                                <div 
+                                  className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: highlightArticles(doc.content.substring(0, 300) + (doc.content.length > 300 ? '...' : ''))
+                                  }}
+                                />
+                                {articles.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {articles.slice(0, 3).map((article, articleIdx) => (
+                                      <span 
+                                        key={articleIdx}
+                                        className="text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 px-2 py-1 rounded-full"
+                                      >
+                                        {article}
+                                      </span>
+                                    ))}
+                                    {articles.length > 3 && (
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        +{articles.length - 3} más
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Artículos Referenciados Combinados */}
+                {message.role === 'assistant' && message.referenced_articles_combined && message.referenced_articles_combined.length > 0 && (
+                  <div className="mt-4">
+                    <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Artículos Referenciados Combinados ({message.referenced_articles_combined.length})
+                      </h3>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
+                        <div className="space-y-3">
+                          {message.referenced_articles_combined.map((article, index) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600 shadow-sm">
+                              <div className="flex-1">
+                                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                  Artículo {article.article_number}
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                  {article.source}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <div className="flex space-x-1">
+                                  {article.methods.includes('vectorial') && (
+                                    <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
+                                      Vectorial
+                                    </span>
+                                  )}
+                                  {article.methods.includes('bm25') && (
+                                    <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium">
+                                      BM25
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                  Score: {article.highest_score?.toFixed(3)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Respuesta SOLO Vectorial */}
+                {message.role === 'assistant' && message.response_vectorial && (
+                  <div className="mb-4">
+                    <div className="border-t border-blue-200 dark:border-blue-600 pt-4">
+                      <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Respuesta SOLO Vectorial
+                      </h3>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {message.response_vectorial}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Respuesta SOLO BM25 */}
+                {message.role === 'assistant' && message.response_bm25 && (
+                  <div className="mb-4">
+                    <div className="border-t border-green-200 dark:border-green-600 pt-4">
+                      <h3 className="text-sm font-semibold text-green-700 dark:text-green-300 mb-3 flex items-center">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Respuesta SOLO BM25
+                      </h3>
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {message.response_bm25}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Respuesta Combinada (Vectorial + BM25) */}
+                {message.role === 'assistant' && message.response_combined && (
+                  <div className="mb-4">
+                    <div className="border-t border-purple-200 dark:border-purple-600 pt-4">
+                      <h3 className="text-sm font-semibold text-purple-700 dark:text-purple-300 mb-3 flex items-center">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Respuesta Combinada (Vectorial + BM25)
+                      </h3>
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {message.response_combined}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Artículos Referenciados Agrupados */}
+                {message.role === 'assistant' && message.referenced_articles && (
+                  <div className="mt-4">
+                    <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Artículos Referenciados
+                      </h3>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
+                        <div className="space-y-3">
+                          {/* Ambos métodos */}
+                          {message.referenced_articles.both && message.referenced_articles.both.length > 0 && (
+                            <div>
+                              <div className="font-semibold text-sm text-green-700 dark:text-green-300 mb-1">En ambos métodos</div>
+                              {message.referenced_articles.both.map((article: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-green-200 dark:border-green-600 shadow-sm mb-2">
+                                  <div className="flex-1">
+                                    <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                      Artículo {article.article_number}
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                      {article.source}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Exclusivos Vectorial y BM25 en columnas */}
+                          {(message.referenced_articles.only_vectorial?.length > 0 || message.referenced_articles.only_bm25?.length > 0) && (
+                            <div className="flex flex-col md:flex-row gap-4">
+                              {/* Solo Vectorial */}
+                              <div className="flex-1">
+                                <div className="font-semibold text-sm text-blue-700 dark:text-blue-300 mb-1">Solo Vectorial</div>
+                                {message.referenced_articles.only_vectorial?.length > 0 ? (
+                                  message.referenced_articles.only_vectorial.map((article: any, index: number) => (
+                                    <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-600 shadow-sm mb-2">
+                                      <div className="flex-1">
+                                        <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                          Artículo {article.article_number}
+                                        </div>
+                                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                          {article.source}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">Ninguno</div>
+                                )}
+                              </div>
+                              {/* Solo BM25 */}
+                              <div className="flex-1">
+                                <div className="font-semibold text-sm text-green-700 dark:text-green-300 mb-1">Solo BM25</div>
+                                {message.referenced_articles.only_bm25?.length > 0 ? (
+                                  message.referenced_articles.only_bm25.map((article: any, index: number) => (
+                                    <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-green-200 dark:border-green-600 shadow-sm mb-2">
+                                      <div className="flex-1">
+                                        <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                          Artículo {article.article_number}
+                                        </div>
+                                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                          {article.source}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">Ninguno</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resultados crudos de Vectorial */}
+                {message.role === 'assistant' && message.vectorial_results && message.vectorial_results.length > 0 && (
+                  <div className="mt-4">
+                    <div className="border-t border-blue-200 dark:border-blue-600 pt-4">
+                      <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Resultados Vectorial (crudos)
+                      </h3>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {message.vectorial_results.map((doc: any, idx: number) => (
+                            <div key={idx} className="bg-white dark:bg-gray-700 rounded p-3 border border-blue-200 dark:border-blue-600">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                                  {doc.source}
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  Similitud: {doc.similarity_score?.toFixed(4)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                                {doc.content?.substring(0, 300) + (doc.content?.length > 300 ? '...' : '')}
+                              </div>
+                              {doc.article_number && (
+                                <div className="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                                  Artículo: {doc.article_number}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resultados crudos de BM25 */}
+                {message.role === 'assistant' && message.bm25_results && message.bm25_results.length > 0 && (
+                  <div className="mt-4">
+                    <div className="border-t border-green-200 dark:border-green-600 pt-4">
+                      <h3 className="text-sm font-semibold text-green-700 dark:text-green-300 mb-3 flex items-center">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Resultados BM25 (crudos)
+                      </h3>
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {message.bm25_results.map((doc: any, idx: number) => (
+                            <div key={idx} className="bg-white dark:bg-gray-700 rounded p-3 border border-green-200 dark:border-green-600">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
+                                  {doc.source}
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  Similitud: {doc.similarity_score?.toFixed(4)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                                {doc.content?.substring(0, 300) + (doc.content?.length > 300 ? '...' : '')}
+                              </div>
+                              {doc.article_number && (
+                                <div className="mt-2 text-xs text-green-700 dark:text-green-300">
+                                  Artículo: {doc.article_number}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
